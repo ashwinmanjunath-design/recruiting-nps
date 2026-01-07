@@ -1,0 +1,480 @@
+// Prisma Schema for Candidate 360° NPS Dashboard - Production Ready
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== User Management & Authentication ====================
+
+model User {
+  id              String    @id @default(uuid())
+  email           String    @unique
+  password        String
+  name            String
+  role            UserRole  @default(VIEWER)
+  isActive        Boolean   @default(true)
+  lastLoginAt     DateTime?
+  invitedBy       String?
+  invitedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relations
+  refreshTokens   RefreshToken[]
+  createdSurveys  Survey[]       @relation("CreatedBy")
+  assignedActions ActionItem[]   @relation("AssignedTo")
+  imports         ImportJob[]    @relation("ImportedBy")
+
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  ANALYST
+  RECRUITER
+  VIEWER
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+// ==================== Candidates & Jobs ====================
+
+model Candidate {
+  id              String         @id @default(uuid())
+  email           String         @unique
+  name            String
+  phone           String?
+  role            String
+  country         String?
+  region          String?
+  source          String?
+  interviewStage  String?
+  status          CandidateStatus @default(ACTIVE)
+  appliedAt       DateTime       @default(now())
+  srCandidateId   String?        @unique  // SmartRecruiters ID
+  metadata        Json?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  // Relations
+  surveys         Survey[]
+  responses       SurveyResponse[]
+  cohortMembers   CohortMembership[]
+  jobs            CandidateJob[]
+
+  @@index([email])
+  @@index([role])
+  @@index([country])
+  @@index([srCandidateId])
+  @@map("candidates")
+}
+
+enum CandidateStatus {
+  ACTIVE
+  HIRED
+  REJECTED
+  WITHDRAWN
+  ARCHIVED
+}
+
+model Job {
+  id          String   @id @default(uuid())
+  title       String
+  department  String?
+  location    String?
+  srJobId     String?  @unique
+  status      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  candidates  CandidateJob[]
+  surveys     Survey[]
+
+  @@map("jobs")
+}
+
+model CandidateJob {
+  id          String   @id @default(uuid())
+  candidateId String
+  jobId       String
+  appliedAt   DateTime @default(now())
+  stage       String?
+  status      String?
+
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  job         Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([candidateId, jobId])
+  @@map("candidate_jobs")
+}
+
+// ==================== Surveys ====================
+
+model SurveyTemplate {
+  id          String        @id @default(uuid())
+  name        String
+  description String?
+  trigger     SurveyTrigger
+  delayDays   Int           @default(0)
+  isActive    Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  questions   SurveyQuestion[]
+  surveys     Survey[]
+
+  @@map("survey_templates")
+}
+
+enum SurveyTrigger {
+  POST_APPLICATION
+  POST_SCREEN
+  POST_INTERVIEW
+  POST_OFFER
+  POST_REJECTION
+  MANUAL
+}
+
+model SurveyQuestion {
+  id          String       @id @default(uuid())
+  templateId  String
+  question    String
+  type        QuestionType
+  isNPS       Boolean      @default(false)
+  isRequired  Boolean      @default(true)
+  scaleMin    Int?
+  scaleMax    Int?
+  options     String[]     @default([])
+  order       Int
+  createdAt   DateTime     @default(now())
+
+  template    SurveyTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  responses   SurveyResponse[]
+
+  @@map("survey_questions")
+}
+
+enum QuestionType {
+  NPS_SCALE
+  TEXT
+  MULTIPLE_CHOICE
+  RATING
+  YES_NO
+}
+
+model Survey {
+  id           String       @id @default(uuid())
+  token        String       @unique
+  candidateId  String
+  jobId        String?
+  templateId   String
+  createdBy    String?
+  sentAt       DateTime?
+  scheduledFor DateTime?
+  respondedAt  DateTime?
+  expiresAt    DateTime
+  status       SurveyStatus @default(DRAFT)
+  sendViaEmail Boolean      @default(true)
+  sendViaSMS   Boolean      @default(false)
+  reminderSent Boolean      @default(false)
+  metadata     Json?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  candidate    Candidate       @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  job          Job?            @relation(fields: [jobId], references: [id])
+  template     SurveyTemplate  @relation(fields: [templateId], references: [id])
+  creator      User?           @relation("CreatedBy", fields: [createdBy], references: [id])
+  responses    SurveyResponse[]
+
+  @@index([token])
+  @@index([candidateId])
+  @@index([status])
+  @@index([scheduledFor])
+  @@map("surveys")
+}
+
+enum SurveyStatus {
+  DRAFT
+  SCHEDULED
+  SENT
+  OPENED
+  COMPLETED
+  EXPIRED
+  FAILED
+}
+
+model SurveyResponse {
+  id          String     @id @default(uuid())
+  surveyId    String
+  candidateId String
+  questionId  String
+  score       Int?
+  text        String?
+  sentiment   Sentiment?
+  createdAt   DateTime   @default(now())
+
+  survey      Survey         @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  candidate   Candidate      @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  question    SurveyQuestion @relation(fields: [questionId], references: [id])
+
+  @@index([surveyId])
+  @@index([candidateId])
+  @@map("survey_responses")
+}
+
+enum Sentiment {
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+}
+
+// ==================== Cohorts ====================
+
+model CohortDefinition {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  filters     Json
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members     CohortMembership[]
+
+  @@map("cohort_definitions")
+}
+
+model CohortMembership {
+  id          String   @id @default(uuid())
+  cohortId    String
+  candidateId String
+  addedAt     DateTime @default(now())
+
+  cohort      CohortDefinition @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  candidate   Candidate        @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@unique([cohortId, candidateId])
+  @@map("cohort_memberships")
+}
+
+// ==================== Insights & Actions ====================
+
+model FeedbackTheme {
+  id        String        @id @default(uuid())
+  name      String        @unique
+  category  ThemeCategory
+  sentiment Sentiment
+  count     Int           @default(0)
+  examples  String[]      @default([])
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  actions   ActionItem[]
+
+  @@map("feedback_themes")
+}
+
+enum ThemeCategory {
+  POSITIVE
+  NEGATIVE
+  NEUTRAL
+}
+
+model ActionItem {
+  id           String       @id @default(uuid())
+  title        String
+  description  String
+  priority     Priority
+  status       ActionStatus @default(PENDING)
+  assignedTo   String?
+  themeId      String?
+  sourceInsight String?
+  dueDate      DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  assignee     User?          @relation("AssignedTo", fields: [assignedTo], references: [id])
+  theme        FeedbackTheme? @relation(fields: [themeId], references: [id])
+
+  @@index([status])
+  @@index([assignedTo])
+  @@map("action_items")
+}
+
+enum Priority {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum ActionStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+// ==================== Geographic Metrics ====================
+
+model GeoMetric {
+  id              String   @id @default(uuid())
+  country         String
+  region          String?
+  countryCode     String?
+  totalCandidates Int      @default(0)
+  totalResponses  Int      @default(0)
+  promoters       Int      @default(0)
+  passives        Int      @default(0)
+  detractors      Int      @default(0)
+  npsScore        Float    @default(0)
+  responseRate    Float    @default(0)
+  avgTimeDays     Float    @default(0)
+  date            DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([country, date])
+  @@index([country])
+  @@index([date])
+  @@map("geo_metrics")
+}
+
+// ==================== Aggregated Metrics ====================
+
+model DailyMetric {
+  id              String   @id @default(uuid())
+  date            DateTime @unique
+  totalSurveys    Int      @default(0)
+  totalResponses  Int      @default(0)
+  promoters       Int      @default(0)
+  passives        Int      @default(0)
+  detractors      Int      @default(0)
+  npsScore        Float    @default(0)
+  responseRate    Float    @default(0)
+  avgTimeDays     Float    @default(0)
+  cohort          String?
+  metadata        Json?
+  createdAt       DateTime @default(now())
+
+  @@index([date])
+  @@index([cohort])
+  @@map("daily_metrics")
+}
+
+// ==================== Bulk Import ====================
+
+model ImportJob {
+  id          String       @id @default(uuid())
+  fileName    String
+  fileSize    Int
+  fileType    String
+  importType  ImportType
+  status      ImportStatus @default(PENDING)
+  uploadedBy  String
+  totalRows   Int          @default(0)
+  successRows Int          @default(0)
+  failedRows  Int          @default(0)
+  startedAt   DateTime?
+  completedAt DateTime?
+  errors      Json?
+  metadata    Json?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  uploader    User         @relation("ImportedBy", fields: [uploadedBy], references: [id])
+  errorLogs   ImportError[]
+
+  @@index([status])
+  @@index([uploadedBy])
+  @@index([createdAt])
+  @@map("import_jobs")
+}
+
+enum ImportType {
+  CANDIDATES
+  SURVEY_RESPONSES
+  COHORTS
+  METRICS
+}
+
+enum ImportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  PARTIALLY_COMPLETED
+}
+
+model ImportError {
+  id        String   @id @default(uuid())
+  importId  String
+  row       Int
+  field     String?
+  error     String
+  rawData   Json?
+  createdAt DateTime @default(now())
+
+  import    ImportJob @relation(fields: [importId], references: [id], onDelete: Cascade)
+
+  @@index([importId])
+  @@map("import_errors")
+}
+
+// ==================== SmartRecruiters Integration ====================
+
+model IntegrationConfig {
+  id              String   @id @default(uuid())
+  provider        String   @unique
+  apiKey          String
+  apiUrl          String
+  webhookUrl      String?
+  webhookSecret   String?
+  isActive        Boolean  @default(true)
+  useMockMode     Boolean  @default(false)
+  syncInterval    Int      @default(15)
+  lastSyncAt      DateTime?
+  lastSyncStatus  String?
+  metadata        Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  syncLogs        SyncLog[]
+
+  @@map("integration_configs")
+}
+
+model SyncLog {
+  id            String   @id @default(uuid())
+  integrationId String
+  syncType      String
+  status        String
+  recordsSynced Int      @default(0)
+  errors        Json?
+  startedAt     DateTime
+  completedAt   DateTime?
+  metadata      Json?
+
+  integration   IntegrationConfig @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@index([integrationId])
+  @@index([startedAt])
+  @@map("sync_logs")
+}

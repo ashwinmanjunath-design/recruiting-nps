@@ -1,0 +1,42 @@
+export enum CandidateStatus {
+  ACTIVE = 'ACTIVE',
+  HIRED = 'HIRED',
+  REJECTED = 'REJECTED',
+  WITHDRAWN = 'WITHDRAWN',
+  ARCHIVED = 'ARCHIVED'
+}
+
+export enum Priority {
+  HIGH = 'HIGH',
+  MEDIUM = 'MEDIUM',
+  LOW = 'LOW'
+}
+
+export enum ActionStatus {
+  PENDING = 'PENDING',
+  IN_PROGRESS = 'IN_PROGRESS',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED'
+}
+
+export enum ThemeCategory {
+  POSITIVE = 'POSITIVE',
+  NEGATIVE = 'NEGATIVE',
+  NEUTRAL = 'NEUTRAL'
+}
+
+export enum ImportType {
+  CANDIDATES = 'CANDIDATES',
+  SURVEY_RESPONSES = 'SURVEY_RESPONSES',
+  COHORTS = 'COHORTS',
+  METRICS = 'METRICS'
+}
+
+export enum ImportStatus {
+  PENDING = 'PENDING',
+  PROCESSING = 'PROCESSING',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+  PARTIALLY_COMPLETED = 'PARTIALLY_COMPLETED'
+}
+

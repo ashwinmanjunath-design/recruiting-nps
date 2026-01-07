@@ -1,0 +1,43 @@
+{
+  "name": "candidate-360-nps",
+  "version": "1.0.0",
+  "description": "Candidate 360° Post-interview NPS Dashboard - Full Stack Application",
+  "main": "dist/server.js",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend",
+    "shared"
+  ],
+  "scripts": {
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\" \"npm run docker:up\"",
+    "build:backend": "cd backend && npm run build",
+    "build:frontend": "cd frontend && npm run build",
+    "build": "npm run build:backend && npm run build:frontend",
+    "start": "cd backend && npm start",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "db:generate": "cd backend && npx prisma generate",
+    "db:migrate": "cd backend && npx prisma migrate dev",
+    "db:migrate:prod": "cd backend && npx prisma migrate deploy",
+    "db:seed": "cd backend && npx tsx prisma/seed.ts",
+    "db:studio": "cd backend && npx prisma studio",
+    "db:reset": "cd backend && npx prisma migrate reset",
+    "setup": "npm install && npm run docker:up && npm run db:generate && npm run db:migrate && npm run db:seed",
+    "lint": "eslint backend/src frontend/src --ext .ts,.tsx",
+    "test": "echo \"Tests not yet implemented\" && exit 0"
+  },
+  "keywords": ["nps", "recruiting", "candidate-experience", "dashboard", "analytics"],
+  "author": "Talent AI",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "eslint": "^8.56.0",
+    "@typescript-eslint/eslint-plugin": "^6.15.0",
+    "@typescript-eslint/parser": "^6.15.0"
+  }
+}
+
