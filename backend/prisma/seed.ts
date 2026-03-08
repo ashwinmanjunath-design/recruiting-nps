@@ -1,265 +1,185 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
+import { randomUUID } from 'crypto';
 
 const prisma = new PrismaClient();
 
 async function seed() {
-  console.log('🌱 Starting database seed...');
+  console.log('Starting database seed...');
 
   try {
     // Create users
     console.log('Creating users...');
-    
-  const hashedPassword = await bcrypt.hash('password', 10);
+
+    const hashedPassword = await bcrypt.hash('password', 10);
 
     const admin = await prisma.user.upsert({
       where: { email: 'admin@example.com' },
       update: {},
       create: {
-      email: 'admin@example.com',
-      password: hashedPassword,
-      name: 'Admin User',
-      role: 'ADMIN',
-      isActive: true
-    }
-  });
+        email: 'admin@example.com',
+        password: hashedPassword,
+        name: 'Admin User',
+        role: 'ADMIN',
+        isActive: true,
+      },
+    });
 
     const analyst = await prisma.user.upsert({
       where: { email: 'analyst@example.com' },
       update: {},
       create: {
-      email: 'analyst@example.com',
-      password: hashedPassword,
+        email: 'analyst@example.com',
+        password: hashedPassword,
         name: 'Sarah Analyst',
-      role: 'ANALYST',
-      isActive: true
-    }
-  });
+        role: 'ANALYST',
+        isActive: true,
+      },
+    });
 
     const recruiter = await prisma.user.upsert({
       where: { email: 'recruiter@example.com' },
       update: {},
       create: {
-      email: 'recruiter@example.com',
-      password: hashedPassword,
+        email: 'recruiter@example.com',
+        password: hashedPassword,
         name: 'Mike Recruiter',
-      role: 'RECRUITER',
-      isActive: true
-    }
-  });
+        role: 'RECRUITER',
+        isActive: true,
+      },
+    });
 
-  console.log(`✅ Created ${3} users`);
+    console.log('Created 3 users');
 
     // Create survey templates
     console.log('Creating survey templates...');
 
-    const npsTemplate = await prisma.surveyTemplate.upsert({
-      where: { name: 'Post-Interview NPS' },
-      update: {},
-      create: {
+    const npsTemplate = await prisma.surveyTemplate.create({
+      data: {
         name: 'Post-Interview NPS',
         description: 'Standard post-interview candidate experience survey',
-      isActive: true,
-      questions: {
-        create: [
-          {
-            type: 'NPS',
-              question: 'On a scale of 0-10, how likely are you to recommend our company to a friend or colleague?',
-            required: true,
-            order: 1
-          },
-          {
-            type: 'TEXT',
-            question: 'What did you like most about your interview experience?',
-            required: false,
-            order: 2
-          },
-          {
-            type: 'TEXT',
-              question: 'What could we improve in our interview process?',
-            required: false,
-            order: 3
-            },
-            {
-              type: 'RATING',
-              question: 'How would you rate the communication throughout the process?',
-              required: true,
-              order: 4,
-              options: JSON.stringify(['1', '2', '3', '4', '5'])
-            }
-          ]
-        }
-      }
-    });
-
-    const quickNpsTemplate = await prisma.surveyTemplate.upsert({
-      where: { name: 'Quick NPS Check' },
-      update: {},
-      create: {
-        name: 'Quick NPS Check',
-        description: 'Quick one-question NPS survey',
+        trigger: 'POST_INTERVIEW',
+        audience: 'CANDIDATE',
         isActive: true,
         questions: {
           create: [
             {
-              type: 'NPS',
-              question: 'How likely are you to recommend us to others?',
-              required: true,
-              order: 1
-            }
-          ]
-        }
-      }
+              type: 'NPS_SCALE',
+              question: 'On a scale of 0-10, how likely are you to recommend our company to a friend or colleague?',
+              isNPS: true,
+              isRequired: true,
+              scaleMin: 0,
+              scaleMax: 10,
+              order: 1,
+            },
+            {
+              type: 'TEXT',
+              question: 'What did you like most about your interview experience?',
+              isRequired: false,
+              order: 2,
+            },
+            {
+              type: 'TEXT',
+              question: 'What could we improve in our interview process?',
+              isRequired: false,
+              order: 3,
+            },
+            {
+              type: 'RATING',
+              question: 'How would you rate the communication throughout the process?',
+              isRequired: true,
+              scaleMin: 1,
+              scaleMax: 5,
+              options: ['1', '2', '3', '4', '5'],
+              order: 4,
+            },
+          ],
+        },
+      },
+      include: { questions: true },
     });
 
-    console.log(`✅ Created ${2} survey templates`);
+    const quickNpsTemplate = await prisma.surveyTemplate.create({
+      data: {
+        name: 'Quick NPS Check',
+        description: 'Quick one-question NPS survey',
+        trigger: 'MANUAL',
+        audience: 'CANDIDATE',
+        isActive: true,
+        questions: {
+          create: [
+            {
+              type: 'NPS_SCALE',
+              question: 'How likely are you to recommend us to others?',
+              isNPS: true,
+              isRequired: true,
+              scaleMin: 0,
+              scaleMax: 10,
+              order: 1,
+            },
+          ],
+        },
+      },
+    });
+
+    console.log('Created 2 survey templates');
+
+    // Get the NPS question ID for responses
+    const npsQuestion = npsTemplate.questions.find((q) => q.isNPS);
+    const textQuestion = npsTemplate.questions.find((q) => q.type === 'TEXT');
+
+    if (!npsQuestion || !textQuestion) {
+      throw new Error('Failed to create template questions');
+    }
 
     // Create jobs
     console.log('Creating jobs...');
 
-    const jobs = [
-      {
-        externalId: 'job_eng_001',
-        title: 'Senior Software Engineer',
-        department: 'Engineering',
-        location: 'San Francisco, CA, USA',
-        status: 'ACTIVE'
-      },
-      {
-        externalId: 'job_pm_001',
-        title: 'Product Manager',
-        department: 'Product',
-        location: 'New York, NY, USA',
-        status: 'ACTIVE'
-      },
-      {
-        externalId: 'job_ds_001',
-        title: 'Data Scientist',
-        department: 'Data',
-        location: 'Boston, MA, USA',
-        status: 'ACTIVE'
-      },
-      {
-        externalId: 'job_design_001',
-        title: 'UX Designer',
-        department: 'Design',
-        location: 'Seattle, WA, USA',
-        status: 'ACTIVE'
-      }
+    const jobsData = [
+      { title: 'Senior Software Engineer', department: 'Engineering', location: 'San Francisco, CA, USA', status: 'ACTIVE' },
+      { title: 'Product Manager', department: 'Product', location: 'New York, NY, USA', status: 'ACTIVE' },
+      { title: 'Data Scientist', department: 'Data', location: 'Boston, MA, USA', status: 'ACTIVE' },
+      { title: 'UX Designer', department: 'Design', location: 'Seattle, WA, USA', status: 'ACTIVE' },
     ];
 
-    for (const jobData of jobs) {
-      await prisma.job.upsert({
-        where: { externalId: jobData.externalId },
-        update: jobData,
-        create: jobData
-      });
+    const jobs = [];
+    for (const jobData of jobsData) {
+      const job = await prisma.job.create({ data: jobData });
+      jobs.push(job);
     }
 
-  console.log(`✅ Created ${jobs.length} jobs`);
+    console.log(`Created ${jobs.length} jobs`);
 
     // Create candidates
     console.log('Creating candidates...');
 
     const candidatesData = [
-      {
-        externalId: 'cand_001',
-        name: 'John Doe',
-        email: 'john.doe@example.com',
-        phone: '+14155551001',
-        role: 'Software Engineer',
-        location: 'San Francisco, CA, USA',
-        source: 'LinkedIn',
-        status: 'ACTIVE'
-      },
-      {
-        externalId: 'cand_002',
-        name: 'Jane Smith',
-        email: 'jane.smith@example.com',
-        phone: '+12125551002',
-        role: 'Product Manager',
-        location: 'New York, NY, USA',
-        source: 'Referral',
-        status: 'ACTIVE'
-      },
-      {
-        externalId: 'cand_003',
-        name: 'Bob Johnson',
-        email: 'bob.johnson@example.com',
-        phone: '+16175551003',
-        role: 'Data Scientist',
-        location: 'Boston, MA, USA',
-        source: 'Career Site',
-        status: 'ACTIVE'
-      },
-      {
-        externalId: 'cand_004',
-        name: 'Alice Williams',
-        email: 'alice.williams@example.com',
-        phone: '+12065551004',
-        role: 'UX Designer',
-        location: 'Seattle, WA, USA',
-        source: 'LinkedIn',
-        status: 'ACTIVE'
-      },
-      {
-        externalId: 'cand_005',
-        name: 'Charlie Brown',
-        email: 'charlie.brown@example.com',
-        phone: '+14155551005',
-        role: 'Software Engineer',
-        location: 'San Francisco, CA, USA',
-        source: 'Agency',
-        status: 'ACTIVE'
-      },
-      {
-        externalId: 'cand_006',
-        name: 'Diana Prince',
-        email: 'diana.prince@example.com',
-        phone: '+13105551006',
-        role: 'Product Manager',
-        location: 'Los Angeles, CA, USA',
-        source: 'LinkedIn',
-        status: 'ACTIVE'
-      },
-      {
-        externalId: 'cand_007',
-        name: 'Ethan Hunt',
-        email: 'ethan.hunt@example.com',
-        phone: '+14155551007',
-        role: 'Software Engineer',
-        location: 'San Francisco, CA, USA',
-        source: 'Referral',
-        status: 'ACTIVE'
-      },
-      {
-        externalId: 'cand_008',
-        name: 'Fiona Green',
-        email: 'fiona.green@example.com',
-        phone: '+14805551008',
-        role: 'Data Scientist',
-        location: 'Phoenix, AZ, USA',
-        source: 'Career Site',
-        status: 'ACTIVE'
-      }
+      { name: 'John Doe', email: 'john.doe@example.com', phone: '+14155551001', role: 'Software Engineer', country: 'USA', region: 'North America', source: 'LinkedIn', status: 'ACTIVE' as const },
+      { name: 'Jane Smith', email: 'jane.smith@example.com', phone: '+12125551002', role: 'Product Manager', country: 'USA', region: 'North America', source: 'Referral', status: 'ACTIVE' as const },
+      { name: 'Bob Johnson', email: 'bob.johnson@example.com', phone: '+16175551003', role: 'Data Scientist', country: 'USA', region: 'North America', source: 'Career Site', status: 'ACTIVE' as const },
+      { name: 'Alice Williams', email: 'alice.williams@example.com', phone: '+12065551004', role: 'UX Designer', country: 'USA', region: 'North America', source: 'LinkedIn', status: 'ACTIVE' as const },
+      { name: 'Charlie Brown', email: 'charlie.brown@example.com', phone: '+14155551005', role: 'Software Engineer', country: 'Germany', region: 'Europe', source: 'Agency', status: 'ACTIVE' as const },
+      { name: 'Diana Prince', email: 'diana.prince@example.com', phone: '+13105551006', role: 'Product Manager', country: 'UK', region: 'Europe', source: 'LinkedIn', status: 'ACTIVE' as const },
+      { name: 'Ethan Hunt', email: 'ethan.hunt@example.com', phone: '+14155551007', role: 'Software Engineer', country: 'India', region: 'Asia', source: 'Referral', status: 'ACTIVE' as const },
+      { name: 'Fiona Green', email: 'fiona.green@example.com', phone: '+14805551008', role: 'Data Scientist', country: 'Australia', region: 'Oceania', source: 'Career Site', status: 'ACTIVE' as const },
     ];
 
     const candidates = [];
     for (const candidateData of candidatesData) {
       const candidate = await prisma.candidate.upsert({
         where: { email: candidateData.email },
-        update: candidateData,
-        create: candidateData
+        update: {},
+        create: candidateData,
       });
       candidates.push(candidate);
     }
 
-  console.log(`✅ Created ${candidates.length} candidates`);
+    console.log(`Created ${candidates.length} candidates`);
 
     // Create surveys and responses
     console.log('Creating surveys and responses...');
 
-    const npsScores = [9, 10, 8, 7, 9, 6, 10, 8]; // Mix of promoters, passives, detractors
+    const npsScores = [9, 10, 8, 7, 9, 6, 10, 8];
     const feedbacks = [
       'Great interview experience! Very professional and friendly.',
       'Excellent process, kept me informed throughout.',
@@ -268,121 +188,127 @@ async function seed() {
       'Really impressed with the team and culture.',
       'Process took too long and communication was poor.',
       'Amazing experience! Would definitely recommend.',
-      'Smooth process, interviewers were well-prepared.'
+      'Smooth process, interviewers were well-prepared.',
     ];
-  
-  let surveyCount = 0;
-  let responseCount = 0;
+
+    let surveyCount = 0;
+    let responseCount = 0;
 
     for (let i = 0; i < candidates.length; i++) {
       const candidate = candidates[i];
-      
-      // Create 2-3 surveys per candidate
       const numSurveys = 2 + Math.floor(Math.random() * 2);
-      
+
       for (let j = 0; j < numSurveys; j++) {
-        const daysAgo = Math.floor(Math.random() * 90); // Last 90 days
+        const daysAgo = Math.floor(Math.random() * 90);
         const sentAt = new Date();
         sentAt.setDate(sentAt.getDate() - daysAgo);
 
-      const survey = await prisma.survey.create({
-        data: {
-          templateId: npsTemplate.id,
-          candidateId: candidate.id,
-            status: Math.random() > 0.3 ? 'COMPLETED' : 'SENT', // 70% response rate
-            sentAt,
-            scheduledFor: null
-        }
-      });
+        const expiresAt = new Date(sentAt);
+        expiresAt.setDate(expiresAt.getDate() + 30);
 
-      surveyCount++;
+        const isCompleted = Math.random() > 0.3;
 
-        // Create response if survey is completed
-      if (survey.status === 'COMPLETED') {
-          const respondedAt = new Date(sentAt);
-          respondedAt.setDate(respondedAt.getDate() + Math.floor(Math.random() * 5)); // Respond within 5 days
-
-        await prisma.surveyResponse.create({
+        const survey = await prisma.survey.create({
           data: {
-            surveyId: survey.id,
-              npsScore: npsScores[i % npsScores.length],
-              feedback: feedbacks[i % feedbacks.length],
-              createdAt: respondedAt
-          }
+            token: randomUUID(),
+            templateId: npsTemplate.id,
+            candidateId: candidate.id,
+            audience: 'CANDIDATE',
+            status: isCompleted ? 'COMPLETED' : 'SENT',
+            sentAt,
+            expiresAt,
+            respondedAt: isCompleted ? new Date(sentAt.getTime() + Math.random() * 5 * 86400000) : null,
+          },
         });
 
-        responseCount++;
+        surveyCount++;
+
+        // Create responses if survey is completed
+        if (isCompleted) {
+          // NPS score response
+          await prisma.surveyResponse.create({
+            data: {
+              surveyId: survey.id,
+              candidateId: candidate.id,
+              questionId: npsQuestion.id,
+              audience: 'CANDIDATE',
+              score: npsScores[i % npsScores.length],
+              sentiment: npsScores[i % npsScores.length] >= 9 ? 'POSITIVE' : npsScores[i % npsScores.length] >= 7 ? 'NEUTRAL' : 'NEGATIVE',
+            },
+          });
+
+          // Text feedback response
+          await prisma.surveyResponse.create({
+            data: {
+              surveyId: survey.id,
+              candidateId: candidate.id,
+              questionId: textQuestion.id,
+              audience: 'CANDIDATE',
+              text: feedbacks[i % feedbacks.length],
+              sentiment: npsScores[i % npsScores.length] >= 7 ? 'POSITIVE' : 'NEGATIVE',
+            },
+          });
+
+          responseCount += 2;
+        }
       }
     }
-  }
 
-  console.log(`✅ Created ${surveyCount} surveys and ${responseCount} responses`);
+    console.log(`Created ${surveyCount} surveys and ${responseCount} responses`);
 
     // Create cohorts
     console.log('Creating cohorts...');
-  
+
     const engineersCohort = await prisma.cohortDefinition.create({
       data: {
         name: 'Software Engineers',
         description: 'All software engineering candidates',
-        filters: { role: 'Software Engineer' }
-      }
+        filters: { role: 'Software Engineer' },
+      },
     });
 
     const linkedInCohort = await prisma.cohortDefinition.create({
       data: {
         name: 'LinkedIn Sourced',
         description: 'Candidates sourced from LinkedIn',
-        filters: { source: 'LinkedIn' }
-      }
+        filters: { source: 'LinkedIn' },
+      },
     });
 
-    // Add candidates to cohorts
     for (const candidate of candidates) {
       if (candidate.role === 'Software Engineer') {
         await prisma.cohortMembership.create({
-      data: {
-            cohortId: engineersCohort.id,
-            candidateId: candidate.id
-          }
+          data: { cohortId: engineersCohort.id, candidateId: candidate.id },
         });
       }
-
       if (candidate.source === 'LinkedIn') {
         await prisma.cohortMembership.create({
-      data: {
-            cohortId: linkedInCohort.id,
-            candidateId: candidate.id
-          }
+          data: { cohortId: linkedInCohort.id, candidateId: candidate.id },
         });
       }
     }
 
-    console.log(`✅ Created ${2} cohorts`);
+    console.log('Created 2 cohorts');
 
     // Create feedback themes
     console.log('Creating feedback themes...');
 
     const themes = [
-      { theme: 'communication', count: 12, sentiment: 'POSITIVE', category: 'PROCESS' },
-      { theme: 'professional', count: 15, sentiment: 'POSITIVE', category: 'CULTURE' },
-      { theme: 'friendly', count: 10, sentiment: 'POSITIVE', category: 'CULTURE' },
-      { theme: 'slow', count: 8, sentiment: 'NEGATIVE', category: 'PROCESS' },
-      { theme: 'organized', count: 11, sentiment: 'POSITIVE', category: 'PROCESS' },
-      { theme: 'disorganized', count: 5, sentiment: 'NEGATIVE', category: 'PROCESS' },
-      { theme: 'great', count: 18, sentiment: 'POSITIVE', category: 'OVERALL' },
-      { theme: 'poor', count: 3, sentiment: 'NEGATIVE', category: 'OVERALL' }
+      { name: 'Great Communication', category: 'POSITIVE' as const, sentiment: 'POSITIVE' as const, count: 12 },
+      { name: 'Professional Interviewers', category: 'POSITIVE' as const, sentiment: 'POSITIVE' as const, count: 15 },
+      { name: 'Friendly Culture', category: 'POSITIVE' as const, sentiment: 'POSITIVE' as const, count: 10 },
+      { name: 'Slow Process', category: 'NEGATIVE' as const, sentiment: 'NEGATIVE' as const, count: 8 },
+      { name: 'Well Organized', category: 'POSITIVE' as const, sentiment: 'POSITIVE' as const, count: 11 },
+      { name: 'Disorganized Scheduling', category: 'NEGATIVE' as const, sentiment: 'NEGATIVE' as const, count: 5 },
+      { name: 'Overall Great Experience', category: 'POSITIVE' as const, sentiment: 'POSITIVE' as const, count: 18 },
+      { name: 'Poor Feedback Loop', category: 'NEGATIVE' as const, sentiment: 'NEGATIVE' as const, count: 3 },
     ];
 
     for (const themeData of themes) {
-      await prisma.feedbackTheme.upsert({
-        where: { theme: themeData.theme },
-        update: themeData,
-        create: themeData
-      });
+      await prisma.feedbackTheme.create({ data: themeData });
     }
 
-  console.log(`✅ Created ${themes.length} feedback themes`);
+    console.log(`Created ${themes.length} feedback themes`);
 
     // Create action items
     console.log('Creating action items...');
@@ -391,68 +317,135 @@ async function seed() {
       {
         title: 'Improve interview scheduling system',
         description: 'Several candidates mentioned difficulty with scheduling. Implement automated scheduling tool.',
-        priority: 'HIGH',
-        status: 'IN_PROGRESS',
-        assignedTo: 'recruiter@example.com',
-        createdById: admin.id
+        priority: 'HIGH' as const,
+        status: 'IN_PROGRESS' as const,
+        assignedTo: recruiter.id,
+        createdById: admin.id,
       },
       {
         title: 'Speed up feedback delivery',
         description: 'Candidates are waiting too long for feedback. Set SLA of 48 hours.',
-        priority: 'URGENT',
-        status: 'PENDING',
-        assignedTo: 'recruiter@example.com',
-        createdById: admin.id
+        priority: 'HIGH' as const,
+        status: 'PENDING' as const,
+        assignedTo: recruiter.id,
+        createdById: admin.id,
       },
       {
         title: 'Create interview prep guide',
         description: 'Help candidates prepare better by providing detailed interview guide.',
-        priority: 'MEDIUM',
-        status: 'PENDING',
-        createdById: analyst.id
+        priority: 'MEDIUM' as const,
+        status: 'PENDING' as const,
+        createdById: analyst.id,
       },
       {
         title: 'Train interviewers on best practices',
         description: 'Ensure all interviewers are trained on candidate experience best practices.',
-        priority: 'MEDIUM',
-        status: 'COMPLETED',
-        assignedTo: 'admin@example.com',
-        createdById: admin.id
-      }
+        priority: 'MEDIUM' as const,
+        status: 'COMPLETED' as const,
+        assignedTo: admin.id,
+        createdById: admin.id,
+      },
     ];
 
     for (const actionData of actions) {
-      await prisma.actionItem.create({
-        data: actionData
+      await prisma.actionItem.create({ data: actionData });
+    }
+
+    console.log(`Created ${actions.length} action items`);
+
+    // Create daily metrics
+    console.log('Creating daily metrics...');
+
+    let metricsCount = 0;
+    for (let daysAgo = 90; daysAgo >= 0; daysAgo -= 3) {
+      const date = new Date();
+      date.setDate(date.getDate() - daysAgo);
+      date.setHours(0, 0, 0, 0);
+
+      const totalSurveys = 15 + Math.floor(Math.random() * 10);
+      const totalResponses = Math.floor(totalSurveys * (0.6 + Math.random() * 0.3));
+      const promoters = Math.floor(totalResponses * (0.5 + Math.random() * 0.2));
+      const detractors = Math.floor(totalResponses * (0.05 + Math.random() * 0.15));
+      const passives = totalResponses - promoters - detractors;
+      const npsScore = ((promoters - detractors) / totalResponses) * 100;
+
+      await prisma.dailyMetric.create({
+        data: {
+          date,
+          audience: 'CANDIDATE',
+          totalSurveys,
+          totalResponses,
+          promoters,
+          passives,
+          detractors,
+          npsScore: Math.round(npsScore * 10) / 10,
+          responseRate: Math.round((totalResponses / totalSurveys) * 100 * 10) / 10,
+          avgTimeDays: 1.5 + Math.random() * 3,
+        },
+      });
+      metricsCount++;
+    }
+
+    console.log(`Created ${metricsCount} daily metrics`);
+
+    // Create geo metrics
+    console.log('Creating geo metrics...');
+
+    const geoData = [
+      { country: 'USA', countryCode: 'US', region: 'North America', totalCandidates: 120, totalResponses: 95 },
+      { country: 'Germany', countryCode: 'DE', region: 'Europe', totalCandidates: 45, totalResponses: 38 },
+      { country: 'UK', countryCode: 'GB', region: 'Europe', totalCandidates: 35, totalResponses: 28 },
+      { country: 'India', countryCode: 'IN', region: 'Asia', totalCandidates: 60, totalResponses: 42 },
+      { country: 'Australia', countryCode: 'AU', region: 'Oceania', totalCandidates: 20, totalResponses: 17 },
+    ];
+
+    for (const geo of geoData) {
+      const promoters = Math.floor(geo.totalResponses * (0.5 + Math.random() * 0.2));
+      const detractors = Math.floor(geo.totalResponses * (0.05 + Math.random() * 0.15));
+      const passives = geo.totalResponses - promoters - detractors;
+      const npsScore = ((promoters - detractors) / geo.totalResponses) * 100;
+
+      await prisma.geoMetric.create({
+        data: {
+          ...geo,
+          audience: 'CANDIDATE',
+          promoters,
+          passives,
+          detractors,
+          npsScore: Math.round(npsScore * 10) / 10,
+          responseRate: Math.round((geo.totalResponses / geo.totalCandidates) * 100 * 10) / 10,
+          avgTimeDays: 1.5 + Math.random() * 3,
+        },
       });
     }
 
-    console.log(`✅ Created ${actions.length} action items`);
+    console.log(`Created ${geoData.length} geo metrics`);
 
-    console.log('✅ Database seeding completed successfully!');
-    console.log('\n📊 Summary:');
-    console.log(`   - 3 users (admin, analyst, recruiter)`);
-    console.log(`   - 2 survey templates`);
-    console.log(`   - 4 jobs`);
-    console.log(`   - 8 candidates`);
-    console.log(`   - ${surveyCount} surveys (${responseCount} responses)`);
-    console.log(`   - 2 cohorts`);
-    console.log(`   - ${themes.length} feedback themes`);
-    console.log(`   - ${actions.length} action items`);
-    console.log('\n🔐 Login credentials:');
-    console.log(`   - admin@example.com / password`);
-    console.log(`   - analyst@example.com / password`);
-    console.log(`   - recruiter@example.com / password`);
+    console.log('\nDatabase seeding completed successfully!');
+    console.log('\nSummary:');
+    console.log('  - 3 users (admin, analyst, recruiter)');
+    console.log('  - 2 survey templates');
+    console.log(`  - ${jobs.length} jobs`);
+    console.log(`  - ${candidates.length} candidates`);
+    console.log(`  - ${surveyCount} surveys (${responseCount} responses)`);
+    console.log('  - 2 cohorts');
+    console.log(`  - ${themes.length} feedback themes`);
+    console.log(`  - ${actions.length} action items`);
+    console.log(`  - ${metricsCount} daily metrics`);
+    console.log(`  - ${geoData.length} geo metrics`);
+    console.log('\nLogin credentials:');
+    console.log('  - admin@example.com / password');
+    console.log('  - analyst@example.com / password');
+    console.log('  - recruiter@example.com / password');
   } catch (error) {
-    console.error('❌ Error seeding database:', error);
+    console.error('Error seeding database:', error);
     throw error;
   } finally {
     await prisma.$disconnect();
   }
 }
 
-seed()
-  .catch((e) => {
-    console.error(e);
-    process.exit(1);
-  });
+seed().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
