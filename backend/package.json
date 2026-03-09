@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "dev:workers": "tsx watch src/jobs/start-workers.ts",
-    "build": "tsc",
+    "build": "npx esbuild src/server.ts --bundle --platform=node --target=node18 --outfile=dist/server.js --packages=external",
     "start": "node dist/server.js",
     "start:workers": "node dist/jobs/start-workers.js",
     "migrate": "prisma migrate dev",

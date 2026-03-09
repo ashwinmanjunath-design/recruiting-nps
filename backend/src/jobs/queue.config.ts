@@ -134,7 +134,7 @@ export const closeQueues = async () => {
   console.log('✅ All queues closed');
 };
 
-export default {
+export const queues = {
   surveySendQueue,
   srSyncQueue,
   bulkImportQueue,
@@ -146,4 +146,6 @@ export default {
   scheduleDailyMetrics,
   closeQueues,
 };
+
+export default queues;
 
