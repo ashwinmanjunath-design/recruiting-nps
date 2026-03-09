@@ -30,6 +30,9 @@ try {
 const app = express();
 const PORT = process.env.PORT || 4000;
 
+// Trust proxy when behind a reverse proxy (Render, Heroku, etc.)
+app.set('trust proxy', 1);
+
 // Security middleware
 app.use(helmet({
   contentSecurityPolicy: {
@@ -47,6 +50,7 @@ app.use(helmet({
 const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
 const allowedOrigins = [
   frontendUrl,
+  'https://recruiting-nps.vercel.app',
   'http://localhost:5173',
   'http://localhost:5174',
   'http://localhost:5175',
