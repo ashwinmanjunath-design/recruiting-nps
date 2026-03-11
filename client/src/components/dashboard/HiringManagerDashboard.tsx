@@ -225,50 +225,6 @@ export default function HiringManagerDashboard({ selectedLocation = 'all', onLoc
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fallback mock data when API fails (for development)
-  const FALLBACK_DATA: HMDashboardData = {
-    audience: 'HIRING_MANAGER',
-    filters: { year: new Date().getFullYear() },
-    metrics: {
-      hmNps: 68,
-      candidateQuality: 72,
-      roleFit: 65,
-      processSpeed: 58,
-      scheduling: 81,
-      communication: 78,
-      marketGuidance: 62,
-    },
-    npsBreakdown: {
-      promoters: 45,
-      passives: 32,
-      detractors: 23,
-      total: 100,
-      promotersPercent: 45,
-      passivesPercent: 32,
-      detractorsPercent: 23,
-    },
-    quarterlyData: [
-      { quarter: 'Q1', nps: 58, responded: 42, sent: 65, change: 0 },
-      { quarter: 'Q2', nps: 64, responded: 51, sent: 72, change: 6 },
-      { quarter: 'Q3', nps: 71, responded: 48, sent: 68, change: 7 },
-      { quarter: 'Q4', nps: 68, responded: 56, sent: 78, change: -3 },
-    ],
-    locationBreakdown: [
-      { region: 'Berlin', regionCode: 'DE', nps: 72, responded: 28, sent: 38, trend: 'up' },
-      { region: 'Prague', regionCode: 'CZ', nps: 65, responded: 18, sent: 24, trend: 'stable' },
-      { region: 'United Kingdom', regionCode: 'UK', nps: 58, responded: 22, sent: 32, trend: 'down' },
-      { region: 'Bengaluru', regionCode: 'IN', nps: 78, responded: 35, sent: 42, trend: 'up' },
-      { region: 'Singapore', regionCode: 'SG', nps: 61, responded: 12, sent: 18, trend: 'stable' },
-      { region: 'Brazil', regionCode: 'BR', nps: 54, responded: 8, sent: 14, trend: 'down' },
-    ],
-    responseOverview: {
-      totalSent: 283,
-      totalResponded: 197,
-      responseRate: 70,
-      avgCompletionTime: '4.2 min',
-    },
-  };
-
   // Fetch data from API
   useEffect(() => {
     const fetchData = async () => {
@@ -287,9 +243,8 @@ export default function HiringManagerDashboard({ selectedLocation = 'all', onLoc
         if (err?.response?.status === 401) {
           console.warn('Token expired - using fallback data. Please re-login for live data.');
         }
-        // Use fallback data instead of showing error
-        setData(FALLBACK_DATA);
-        setError(null); // Clear error since we're using fallback
+        setError('No hiring manager data available yet.');
+        setData(null);
       } finally {
         setLoading(false);
       }
