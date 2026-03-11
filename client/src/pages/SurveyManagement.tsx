@@ -31,71 +31,9 @@ const AUDIENCE_FILTER_OPTIONS = [
 ] as const;
 
 // ============================================
-// MOCK DATA
-// TODO: Replace with real Survey API (GET /api/surveys)
+// INITIAL DATA (empty — surveys come from API)
 // ============================================
-const INITIAL_SURVEYS: Survey[] = [
-  {
-    id: 'survey-1',
-    name: 'Post-interview – Engineers',
-    targetCohort: 'Backend – India Q4',
-    audience: SurveyAudience.CANDIDATE,
-    dateSent: '24 Nov 2024',
-    responseRate: 68,
-    owner: 'Sarah K.',
-    status: 'Live',
-  },
-  {
-    id: 'survey-2',
-    name: 'Final Round – Designers',
-    targetCohort: 'Product Design – Global',
-    audience: SurveyAudience.CANDIDATE,
-    dateSent: '30 Nov 2024',
-    responseRate: 54,
-    owner: 'Hiring Ops',
-    status: 'Live',
-  },
-  {
-    id: 'survey-3',
-    name: 'Post-interview – General',
-    targetCohort: 'All Candidates Q4',
-    audience: SurveyAudience.CANDIDATE,
-    dateSent: '15 Dec 2024',
-    responseRate: 0,
-    owner: 'Recruiting Team',
-    status: 'Scheduled',
-  },
-  {
-    id: 'survey-4',
-    name: 'Hiring Manager Feedback Q4',
-    targetCohort: 'Engineering Managers',
-    audience: SurveyAudience.HIRING_MANAGER,
-    dateSent: '01 Dec 2024',
-    responseRate: 72,
-    owner: 'Recruiting Ops',
-    status: 'Live',
-  },
-  {
-    id: 'survey-5',
-    name: 'Workplace Experience - Dec',
-    targetCohort: 'All Employees',
-    audience: SurveyAudience.WORKPLACE,
-    dateSent: '10 Dec 2024',
-    responseRate: 45,
-    owner: 'HR Team',
-    status: 'Live',
-  },
-  {
-    id: 'survey-6',
-    name: 'IT Onboarding Feedback',
-    targetCohort: 'New Hires Q4',
-    audience: SurveyAudience.IT_SUPPORT,
-    dateSent: '05 Dec 2024',
-    responseRate: 81,
-    owner: 'IT Support',
-    status: 'Live',
-  },
-];
+const INITIAL_SURVEYS: Survey[] = [];
 
 // ============================================
 // SURVEY MANAGEMENT PAGE COMPONENT
