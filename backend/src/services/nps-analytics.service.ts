@@ -1,13 +1,11 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, SurveyAudience } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
 /**
  * NPS Analytics Service
- * 
- * This service computes NPS metrics from real survey response data.
- * Currently uses mock data for development, but all query structures
- * are production-ready and can be uncommented when real data is available.
+ *
+ * Computes NPS metrics from real survey response data.
  */
 
 export interface DateRangeFilter {
@@ -21,6 +19,7 @@ export interface NpsFilters extends DateRangeFilter {
   region?: string;
   source?: string;
   cohortId?: string;
+  audience?: SurveyAudience;
   baseline?: 'engineers-q1' | 'designers-q1' | 'all-roles';
 }
 
@@ -45,189 +44,204 @@ export interface NpsTrend {
   nps: number;
 }
 
+function buildSurveyWhere(filters?: NpsFilters) {
+  const where: any = {
+    sentAt: { not: null },
+    audience: filters?.audience || 'CANDIDATE',
+  };
+  if (filters?.from) where.sentAt = { ...where.sentAt, gte: filters.from };
+  if (filters?.to) where.sentAt = { ...where.sentAt, lte: filters.to };
+  return where;
+}
+
+function buildCandidateWhere(filters?: NpsFilters) {
+  const where: any = {};
+  if (filters?.role) where.role = filters.role;
+  if (filters?.country) where.country = filters.country;
+  if (filters?.region) where.region = filters.region;
+  if (filters?.source) where.source = filters.source;
+  return where;
+}
+
 export class NpsAnalyticsService {
-  /**
-   * Get overall NPS score for a given date range and filters
-   * 
-   * TODO: Replace mock data with real Prisma query:
-   * - Query SurveyResponse table for NPS ratings (score 0-10)
-   * - Filter by date range, role, region, etc.
-   * - Calculate NPS: % Promoters (9-10) - % Detractors (0-6)
-   * - Group responses by status
-   */
   async getOverallNpsScore(filters?: NpsFilters): Promise<NpsOverview> {
-    // TODO: Replace with real query
-    // const responses = await prisma.surveyResponse.findMany({
-    //   where: {
-    //     AND: [
-    //       filters?.from ? { createdAt: { gte: filters.from } } : {},
-    //       filters?.to ? { createdAt: { lte: filters.to } } : {},
-    //       filters?.role ? { candidate: { role: filters.role } } : {},
-    //       filters?.country ? { candidate: { country: filters.country } } : {},
-    //       { question: { isNPS: true } },
-    //       { score: { not: null } },
-    //     ],
-    //   },
-    //   include: {
-    //     candidate: true,
-    //     survey: true,
-    //   },
-    // });
+    const surveyWhere = buildSurveyWhere(filters);
+    const candidateWhere = buildCandidateWhere(filters);
 
-    // const promoters = responses.filter(r => r.score >= 9).length;
-    // const passives = responses.filter(r => r.score >= 7 && r.score <= 8).length;
-    // const detractors = responses.filter(r => r.score <= 6).length;
-    // const total = responses.length;
+    // If candidate filters are present, add them
+    if (Object.keys(candidateWhere).length > 0) {
+      surveyWhere.candidate = candidateWhere;
+    }
 
-    // const npsScore = total > 0 
-    //   ? Math.round(((promoters - detractors) / total) * 100) 
-    //   : 0;
+    const surveys = await prisma.survey.findMany({
+      where: surveyWhere,
+      take: 10000,
+      include: { responses: true },
+    });
 
-    // MOCK DATA for development
+    const totalSent = surveys.length;
+    const surveysWithResponses = surveys.filter(s => s.responses.length > 0);
+    const totalResponded = surveysWithResponses.length;
+    const responseRate = totalSent > 0 ? Math.round((totalResponded / totalSent) * 100) : 0;
+
+    const allScores = surveys
+      .flatMap(s => s.responses)
+      .map(r => r.score)
+      .filter((s): s is number => s !== null && s !== undefined);
+
+    const promoters = allScores.filter(s => s >= 9).length;
+    const passives = allScores.filter(s => s >= 7 && s <= 8).length;
+    const detractors = allScores.filter(s => s <= 6).length;
+    const total = allScores.length;
+    const npsScore = total > 0 ? Math.round(((promoters - detractors) / total) * 100) : 0;
+
     return {
-      npsScore: 75,
-      responseRate: 82,
-      responseRateChange: 15,
-      totalInvitations: 6000,
-      totalResponses: 4920,
+      npsScore,
+      responseRate,
+      responseRateChange: 0, // Calculated at route level with history
+      totalInvitations: totalSent,
+      totalResponses: total,
       breakdown: {
-        promoters: { count: 158, percentage: 58 },
-        passives: { count: 65, percentage: 24 },
-        detractors: { count: 48, percentage: 18 },
+        promoters: { count: promoters, percentage: total > 0 ? Math.round((promoters / total) * 100) : 0 },
+        passives: { count: passives, percentage: total > 0 ? Math.round((passives / total) * 100) : 0 },
+        detractors: { count: detractors, percentage: total > 0 ? Math.round((detractors / total) * 100) : 0 },
       },
     };
   }
 
-  /**
-   * Get NPS trend over time with specified interval
-   * 
-   * TODO: Replace mock data with real Prisma query:
-   * - Query SurveyResponse grouped by date intervals
-   * - Calculate NPS for each period
-   * - Support daily, weekly, monthly, quarterly intervals
-   */
   async getNpsTrend(
     interval: 'daily' | 'weekly' | 'monthly' | 'quarterly',
     filters?: NpsFilters
   ): Promise<NpsTrend[]> {
-    // TODO: Replace with real query using Prisma groupBy or raw SQL
-    // const responses = await prisma.$queryRaw`
-    //   SELECT 
-    //     DATE_TRUNC(${interval}, created_at) as period,
-    //     COUNT(*) FILTER (WHERE score >= 9) as promoters,
-    //     COUNT(*) FILTER (WHERE score >= 7 AND score <= 8) as passives,
-    //     COUNT(*) FILTER (WHERE score <= 6) as detractors,
-    //     ROUND(
-    //       (COUNT(*) FILTER (WHERE score >= 9) - COUNT(*) FILTER (WHERE score <= 6)) * 100.0 / COUNT(*),
-    //       0
-    //     ) as nps
-    //   FROM survey_responses
-    //   WHERE question_id IN (SELECT id FROM survey_questions WHERE is_nps = true)
-    //   GROUP BY DATE_TRUNC(${interval}, created_at)
-    //   ORDER BY period
-    // `;
+    const audience = filters?.audience || 'CANDIDATE';
 
-    // MOCK DATA for development
-    const mockData = {
-      weekly: [
-        { period: 'Week 1', promoters: 120, passives: 80, detractors: 50, nps: 68 },
-        { period: 'Week 2', promoters: 150, passives: 95, detractors: 60, nps: 70 },
-        { period: 'Week 3', promoters: 180, passives: 110, detractors: 70, nps: 72 },
-        { period: 'Week 4', promoters: 210, passives: 130, detractors: 80, nps: 75 },
-      ],
-      monthly: [
-        { period: 'Jan', promoters: 520, passives: 380, detractors: 250, nps: 68 },
-        { period: 'Feb', promoters: 580, passives: 420, detractors: 280, nps: 70 },
-        { period: 'Mar', promoters: 650, passives: 480, detractors: 320, nps: 72 },
-        { period: 'Apr', promoters: 720, passives: 540, detractors: 360, nps: 74 },
-        { period: 'May', promoters: 800, passives: 610, detractors: 400, nps: 75 },
-        { period: 'Jun', promoters: 880, passives: 680, detractors: 450, nps: 77 },
-      ],
-      quarterly: [
-        { period: 'Q1 2023', promoters: 1500, passives: 1100, detractors: 750, nps: 65 },
-        { period: 'Q2 2023', promoters: 1800, passives: 1350, detractors: 900, nps: 68 },
-        { period: 'Q3 2023', promoters: 2100, passives: 1600, detractors: 1050, nps: 71 },
-        { period: 'Q4 2023', promoters: 2400, passives: 1850, detractors: 1200, nps: 73 },
-        { period: 'Q1 2024', promoters: 2700, passives: 2100, detractors: 1350, nps: 75 },
-      ],
-      daily: [],
-    };
+    const where: any = { audience };
+    if (filters?.from) where.date = { ...where.date, gte: filters.from };
+    if (filters?.to) where.date = { ...where.date, lte: filters.to };
 
-    return mockData[interval];
+    const metrics = await prisma.dailyMetric.findMany({
+      where,
+      orderBy: { date: 'asc' },
+    });
+
+    if (metrics.length === 0) return [];
+
+    // Group by period
+    const groups = new Map<string, typeof metrics>();
+    for (const m of metrics) {
+      const key = getPeriodKey(m.date, interval);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(m);
+    }
+
+    const results: NpsTrend[] = [];
+    for (const [, periodMetrics] of groups) {
+      const promoters = periodMetrics.reduce((s, m) => s + m.promoters, 0);
+      const passives = periodMetrics.reduce((s, m) => s + m.passives, 0);
+      const detractors = periodMetrics.reduce((s, m) => s + m.detractors, 0);
+      const total = promoters + passives + detractors;
+      if (total === 0) continue;
+
+      results.push({
+        period: formatPeriod(periodMetrics[0].date, interval),
+        promoters,
+        passives,
+        detractors,
+        nps: Math.round(((promoters - detractors) / total) * 100),
+      });
+    }
+
+    return results;
   }
 
-  /**
-   * Get response rate for surveys
-   * 
-   * TODO: Replace with real query:
-   * - Count total surveys sent vs completed
-   * - Calculate percentage
-   * - Compare with previous period for trend
-   */
   async getResponseRate(filters?: NpsFilters): Promise<{
     rate: number;
     change: number;
     totalSent: number;
     totalResponded: number;
   }> {
-    // TODO: Replace with real query
-    // const totalSent = await prisma.survey.count({
-    //   where: {
-    //     status: { in: ['SENT', 'COMPLETED', 'OPENED'] },
-    //     sentAt: filters?.from ? { gte: filters.from } : undefined,
-    //   },
-    // });
+    const surveyWhere = buildSurveyWhere(filters);
 
-    // const totalResponded = await prisma.survey.count({
-    //   where: {
-    //     status: 'COMPLETED',
-    //     respondedAt: filters?.from ? { gte: filters.from } : undefined,
-    //   },
-    // });
+    const totalSent = await prisma.survey.count({ where: surveyWhere });
+    const totalResponded = await prisma.survey.count({
+      where: { ...surveyWhere, status: 'COMPLETED' },
+    });
 
-    // const rate = totalSent > 0 ? (totalResponded / totalSent) * 100 : 0;
+    const rate = totalSent > 0 ? Math.round((totalResponded / totalSent) * 100) : 0;
 
-    // MOCK DATA
-    return {
-      rate: 82,
-      change: 15,
-      totalSent: 6000,
-      totalResponded: 4920,
-    };
+    return { rate, change: 0, totalSent, totalResponded };
   }
 
-  /**
-   * Get NPS breakdown by segment (role, country, etc.)
-   * 
-   * TODO: Replace with real query:
-   * - Group responses by specified dimension
-   * - Calculate NPS for each group
-   * - Return sorted by NPS score
-   */
   async getNpsBreakdown(
     dimension: 'role' | 'country' | 'region' | 'source',
     filters?: NpsFilters
   ): Promise<Array<{ label: string; nps: number; count: number }>> {
-    // TODO: Replace with real query using groupBy
-    // const responses = await prisma.surveyResponse.groupBy({
-    //   by: ['candidate.' + dimension],
-    //   where: {
-    //     question: { isNPS: true },
-    //     score: { not: null },
-    //     ...buildFilterWhere(filters),
-    //   },
-    //   _count: true,
-    // });
+    const audience = filters?.audience || 'CANDIDATE';
 
-    // MOCK DATA
-    return [
-      { label: 'Engineers', nps: 78, count: 245 },
-      { label: 'Product Managers', nps: 74, count: 180 },
-      { label: 'Designers', nps: 72, count: 98 },
-      { label: 'Sales', nps: 70, count: 156 },
-    ];
+    // Get candidates grouped by dimension
+    const candidates = await prisma.candidate.findMany({
+      where: {
+        [dimension]: { not: null },
+        surveys: { some: { audience } },
+      },
+      take: 5000,
+      include: {
+        surveys: {
+          where: { audience },
+          include: { responses: true },
+        },
+      },
+    });
+
+    // Group by dimension value
+    const groups = new Map<string, number[]>();
+    for (const c of candidates) {
+      const key = (c as any)[dimension] as string;
+      if (!key) continue;
+      if (!groups.has(key)) groups.set(key, []);
+      const scores = c.surveys
+        .flatMap(s => s.responses)
+        .map(r => r.score)
+        .filter((s): s is number => s !== null);
+      groups.get(key)!.push(...scores);
+    }
+
+    const results = Array.from(groups.entries()).map(([label, scores]) => {
+      const promoters = scores.filter(s => s >= 9).length;
+      const detractors = scores.filter(s => s <= 6).length;
+      const total = scores.length;
+      const nps = total > 0 ? Math.round(((promoters - detractors) / total) * 100) : 0;
+      return { label, nps, count: total };
+    });
+
+    return results.sort((a, b) => b.nps - a.nps);
   }
 }
 
-export default new NpsAnalyticsService();
+function formatPeriod(date: Date, interval: string): string {
+  if (interval === 'weekly') {
+    const weekStart = new Date(date);
+    weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+    return `Week of ${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+  }
+  if (interval === 'quarterly') {
+    const q = Math.floor(date.getMonth() / 3) + 1;
+    return `Q${q} ${date.getFullYear()}`;
+  }
+  return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+}
 
+function getPeriodKey(date: Date, interval: string): string {
+  if (interval === 'weekly') {
+    const weekStart = new Date(date);
+    weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+    return weekStart.toISOString().slice(0, 10);
+  }
+  if (interval === 'quarterly') {
+    const q = Math.floor(date.getMonth() / 3);
+    return `${date.getFullYear()}-Q${q}`;
+  }
+  return `${date.getFullYear()}-${String(date.getMonth()).padStart(2, '0')}`;
+}
+
+export default new NpsAnalyticsService();

@@ -113,15 +113,26 @@ router.get('/overview', async (req, res) => {
       });
     }
 
+    // Calculate responseRateChange by comparing current vs previous period
+    let responseRateChange = 0;
+    if (npsHistory.length >= 2) {
+      const prevMonthNps = npsHistory.at(-2)?.nps ?? 0;
+      responseRateChange = nps - prevMonthNps;
+    }
+
     res.json({
       audience,
-      nps,
+      npsScore: nps,
       responseRate,
+      responseRateChange,
       totalCandidates,
-      totalResponses,
-      promoters,
-      passives,
-      detractors,
+      totalResponses: total,
+      totalSent,
+      breakdown: {
+        promoters: { count: promoters, percentage: total > 0 ? Math.round((promoters / total) * 100) : 0 },
+        passives: { count: passives, percentage: total > 0 ? Math.round((passives / total) * 100) : 0 },
+        detractors: { count: detractors, percentage: total > 0 ? Math.round((detractors / total) * 100) : 0 },
+      },
       avgTimeToFeedback,
       npsHistory
     });

@@ -5,9 +5,9 @@ const prisma = new PrismaClient();
 
 /**
  * Geographic Analytics Service
- * 
- * This service computes geographic performance metrics from real survey data.
- * All query structures are production-ready.
+ *
+ * Computes geographic performance metrics from real survey data.
+ * Uses GeoMetric table (pre-aggregated) or computes from SurveyResponse + Candidate.
  */
 
 export interface GeographicPerformance {
@@ -32,266 +32,179 @@ export interface MapDataPoint {
   count: number;
 }
 
+// Known coordinates for major cities/countries
+const COUNTRY_COORDINATES: Record<string, { lat: number; lng: number }> = {
+  'United States': { lat: 37.0902, lng: -95.7129 },
+  'United Kingdom': { lat: 55.3781, lng: -3.436 },
+  'Germany': { lat: 51.1657, lng: 10.4515 },
+  'India': { lat: 20.5937, lng: 78.9629 },
+  'Brazil': { lat: -14.235, lng: -51.9253 },
+  'Czech Republic': { lat: 49.8175, lng: 15.473 },
+  'Singapore': { lat: 1.3521, lng: 103.8198 },
+  'Australia': { lat: -25.2744, lng: 133.7751 },
+  'Japan': { lat: 36.2048, lng: 138.2529 },
+  'France': { lat: 46.2276, lng: 2.2137 },
+  'Canada': { lat: 56.1304, lng: -106.3468 },
+};
+
 export class GeographicAnalyticsService {
   /**
-   * Get geographic performance by country/region
-   * 
-   * TODO: Replace mock data with real Prisma queries:
-   * - Query GeoMetric table (pre-aggregated) or compute on-the-fly
-   * - Join Candidate → SurveyResponse for NPS calculation
-   * - Group by country/region
-   * - Calculate NPS, response rate, and time metrics
+   * Get geographic performance - tries GeoMetric first, falls back to computing from surveys
    */
   async getGeographicPerformance(filters?: NpsFilters): Promise<GeographicPerformance[]> {
-    // TODO: Replace with real query
-    // Option 1: Use pre-aggregated GeoMetric table
-    // const metrics = await prisma.geoMetric.findMany({
-    //   where: {
-    //     date: filters?.from ? { gte: filters.from } : undefined,
-    //   },
-    //   orderBy: { npsScore: 'desc' },
-    // });
+    const audience = filters?.audience || 'CANDIDATE';
 
-    // Option 2: Compute on-the-fly
-    // const candidatesByCountry = await prisma.candidate.groupBy({
-    //   by: ['country', 'region'],
-    //   where: {
-    //     responses: {
-    //       some: {
-    //         createdAt: filters?.from ? { gte: filters.from } : undefined,
-    //       },
-    //     },
-    //   },
-    //   _count: true,
-    // });
-
-    // For each country, calculate NPS from responses
-    // const geoData = await Promise.all(
-    //   candidatesByCountry.map(async (group) => {
-    //     const responses = await prisma.surveyResponse.findMany({
-    //       where: {
-    //         candidate: { country: group.country },
-    //         question: { isNPS: true },
-    //         score: { not: null },
-    //       },
-    //       include: { survey: true },
-    //     });
-
-    //     const promoters = responses.filter(r => r.score >= 9).length;
-    //     const passives = responses.filter(r => r.score >= 7 && r.score <= 8).length;
-    //     const detractors = responses.filter(r => r.score <= 6).length;
-    //     const npsScore = responses.length > 0
-    //       ? Math.round(((promoters - detractors) / responses.length) * 100)
-    //       : 0;
-
-    //     // Calculate avg time from survey sent to response
-    //     const avgTimeDays = responses.length > 0
-    //       ? responses.reduce((sum, r) => {
-    //           const diffMs = new Date(r.createdAt).getTime() - new Date(r.survey.sentAt).getTime();
-    //           return sum + diffMs / (1000 * 60 * 60 * 24);
-    //         }, 0) / responses.length
-    //       : 0;
-
-    //     return {
-    //       country: group.country,
-    //       region: group.region,
-    //       npsScore,
-    //       responseRate: calculateResponseRate(group.country),
-    //       totalCandidates: group._count,
-    //       totalResponses: responses.length,
-    //       promoters,
-    //       passives,
-    //       detractors,
-    //       avgTimeDays,
-    //     };
-    //   })
-    // );
-
-    // MOCK DATA for development
-    return [
-      {
-        country: 'United States',
-        countryCode: 'US',
-        npsScore: 78,
-        responseRate: 85,
-        totalCandidates: 1250,
-        totalResponses: 1062,
-        promoters: 615,
-        passives: 255,
-        detractors: 192,
-        avgTimeDays: 2.3,
+    // Try pre-aggregated GeoMetric table first
+    const geoMetrics = await prisma.geoMetric.findMany({
+      where: {
+        audience,
+        ...(filters?.from && { date: { gte: filters.from } }),
+        ...(filters?.to && { date: { ...({} as any), lte: filters.to } }),
       },
-      {
-        country: 'United Kingdom',
-        countryCode: 'GB',
-        npsScore: 76,
-        responseRate: 82,
-        totalCandidates: 850,
-        totalResponses: 697,
-        promoters: 420,
-        passives: 175,
-        detractors: 102,
-        avgTimeDays: 2.8,
+      orderBy: { npsScore: 'desc' },
+    });
+
+    if (geoMetrics.length > 0) {
+      return geoMetrics.map(g => ({
+        country: g.country,
+        countryCode: g.countryCode || undefined,
+        region: g.region || undefined,
+        npsScore: Math.round(g.npsScore),
+        responseRate: Math.round(g.responseRate),
+        totalCandidates: g.totalCandidates,
+        totalResponses: g.totalResponses,
+        promoters: g.promoters,
+        passives: g.passives,
+        detractors: g.detractors,
+        avgTimeDays: g.avgTimeDays,
+      }));
+    }
+
+    // Fall back to computing from survey responses
+    const candidates = await prisma.candidate.findMany({
+      where: {
+        country: { not: null },
+        surveys: { some: { audience, sentAt: { not: null } } },
       },
-      {
-        country: 'Germany',
-        countryCode: 'DE',
-        npsScore: 74,
-        responseRate: 80,
-        totalCandidates: 620,
-        totalResponses: 496,
-        promoters: 295,
-        passives: 125,
-        detractors: 76,
-        avgTimeDays: 3.1,
+      take: 10000,
+      include: {
+        surveys: {
+          where: { audience, sentAt: { not: null } },
+          include: { responses: true },
+        },
       },
-      {
-        country: 'India',
-        countryCode: 'IN',
-        npsScore: 72,
-        responseRate: 88,
-        totalCandidates: 1100,
-        totalResponses: 968,
-        promoters: 560,
-        passives: 242,
-        detractors: 166,
-        avgTimeDays: 1.9,
-      },
-      {
-        country: 'Brazil',
-        countryCode: 'BR',
-        npsScore: 70,
-        responseRate: 75,
-        totalCandidates: 450,
-        totalResponses: 338,
-        promoters: 185,
-        passives: 95,
-        detractors: 58,
-        avgTimeDays: 3.5,
-      },
-    ];
+    });
+
+    // Group by country
+    const countryMap = new Map<string, typeof candidates>();
+    for (const c of candidates) {
+      if (!c.country) continue;
+      if (!countryMap.has(c.country)) countryMap.set(c.country, []);
+      countryMap.get(c.country)!.push(c);
+    }
+
+    const results: GeographicPerformance[] = [];
+    for (const [country, countryCandidates] of countryMap) {
+      const allResponses = countryCandidates.flatMap(c => c.surveys.flatMap(s => s.responses));
+      const scores = allResponses.map(r => r.score).filter((s): s is number => s !== null);
+
+      const promoters = scores.filter(s => s >= 9).length;
+      const passives = scores.filter(s => s >= 7 && s <= 8).length;
+      const detractors = scores.filter(s => s <= 6).length;
+      const total = scores.length;
+      const npsScore = total > 0 ? Math.round(((promoters - detractors) / total) * 100) : 0;
+
+      const totalSurveys = countryCandidates.flatMap(c => c.surveys).length;
+      const surveysWithResponses = countryCandidates.flatMap(c => c.surveys).filter(s => s.responses.length > 0).length;
+      const responseRate = totalSurveys > 0 ? Math.round((surveysWithResponses / totalSurveys) * 100) : 0;
+
+      // Calculate avg time to feedback
+      const allSurveys = countryCandidates.flatMap(c => c.surveys);
+      const times = allResponses
+        .map(r => {
+          const survey = allSurveys.find(s => s.id === r.surveyId);
+          if (!survey?.sentAt) return null;
+          return (new Date(r.createdAt).getTime() - new Date(survey.sentAt).getTime()) / (1000 * 60 * 60 * 24);
+        })
+        .filter((t): t is number => t !== null && t >= 0);
+      const avgTimeDays = times.length > 0 ? times.reduce((a, b) => a + b, 0) / times.length : 0;
+
+      results.push({
+        country,
+        npsScore,
+        responseRate,
+        totalCandidates: countryCandidates.length,
+        totalResponses: total,
+        promoters,
+        passives,
+        detractors,
+        avgTimeDays: Math.round(avgTimeDays * 10) / 10,
+      });
+    }
+
+    return results.sort((a, b) => b.npsScore - a.npsScore);
   }
 
   /**
    * Get map data points with lat/lng coordinates
-   * 
-   * TODO: Replace with real query:
-   * - Query candidates with non-null lat/lng or region
-   * - Use geocoding service or pre-computed coordinates
-   * - Calculate NPS for each location
    */
   async getMapDataPoints(filters?: NpsFilters): Promise<MapDataPoint[]> {
-    // TODO: Replace with real query
-    // const candidates = await prisma.candidate.findMany({
-    //   where: {
-    //     country: { not: null },
-    //     responses: {
-    //       some: {
-    //         question: { isNPS: true },
-    //         createdAt: filters?.from ? { gte: filters.from } : undefined,
-    //       },
-    //     },
-    //   },
-    //   include: {
-    //     responses: {
-    //       where: { question: { isNPS: true } },
-    //     },
-    //   },
-    // });
+    const geoData = await this.getGeographicPerformance(filters);
 
-    // Group by country/city and calculate NPS
-    // const locationMap = new Map();
-    // candidates.forEach(candidate => {
-    //   const key = `${candidate.country}-${candidate.region || 'main'}`;
-    //   if (!locationMap.has(key)) {
-    //     locationMap.set(key, {
-    //       country: candidate.country,
-    //       region: candidate.region,
-    //       responses: [],
-    //       count: 0,
-    //     });
-    //   }
-    //   const loc = locationMap.get(key);
-    //   loc.responses.push(...candidate.responses);
-    //   loc.count++;
-    // });
-
-    // Convert to MapDataPoint format with coordinates
-    // const dataPoints = Array.from(locationMap.values()).map(loc => {
-    //   const coords = getCoordinatesForLocation(loc.country, loc.region);
-    //   const nps = calculateNps(loc.responses);
-    //   return {
-    //     lat: coords.lat,
-    //     lng: coords.lng,
-    //     npsScore: nps,
-    //     country: loc.country,
-    //     count: loc.count,
-    //   };
-    // });
-
-    // MOCK DATA
-    return [
-      { lat: 37.7749, lng: -122.4194, npsScore: 78, country: 'United States', count: 450 },
-      { lat: 40.7128, lng: -74.0060, npsScore: 76, country: 'United States', count: 380 },
-      { lat: 51.5074, lng: -0.1278, npsScore: 76, country: 'United Kingdom', count: 420 },
-      { lat: 52.5200, lng: 13.4050, npsScore: 74, country: 'Germany', count: 320 },
-      { lat: 12.9716, lng: 77.5946, npsScore: 72, country: 'India', count: 580 },
-      { lat: -23.5505, lng: -46.6333, npsScore: 70, country: 'Brazil', count: 280 },
-    ];
+    return geoData
+      .filter(g => COUNTRY_COORDINATES[g.country])
+      .map(g => {
+        const coords = COUNTRY_COORDINATES[g.country];
+        return {
+          lat: coords.lat,
+          lng: coords.lng,
+          npsScore: g.npsScore,
+          country: g.country,
+          count: g.totalCandidates,
+        };
+      });
   }
 
   /**
    * Get regional insights (best/worst performing regions)
-   * 
-   * TODO: Replace with real query:
-   * - Identify top and bottom performing regions
-   * - Analyze trends over time
-   * - Return actionable insights
    */
   async getRegionalInsights(filters?: NpsFilters): Promise<{
     topPerforming: GeographicPerformance[];
     needsImprovement: GeographicPerformance[];
     insights: Array<{ type: string; message: string; region: string }>;
   }> {
-    // TODO: Replace with real query
     const allRegions = await this.getGeographicPerformance(filters);
-    
-    // Sort by NPS score
+
+    if (allRegions.length === 0) {
+      return { topPerforming: [], needsImprovement: [], insights: [] };
+    }
+
     const sorted = [...allRegions].sort((a, b) => b.npsScore - a.npsScore);
-    
     const topPerforming = sorted.slice(0, 3);
     const needsImprovement = sorted.slice(-3).reverse();
 
-    // Generate insights
-    const insights = [];
-    
-    // TODO: Add real insight generation logic
-    // if (topPerforming[0].npsScore > 75) {
-    //   insights.push({
-    //     type: 'positive',
-    //     message: `Strong performance in ${topPerforming[0].country}`,
-    //     region: topPerforming[0].country,
-    //   });
-    // }
+    // Generate dynamic insights from real data
+    const insights: Array<{ type: string; message: string; region: string }> = [];
 
-    return {
-      topPerforming,
-      needsImprovement,
-      insights: [
-        {
-          type: 'positive',
-          message: 'North America shows consistently high NPS',
-          region: 'United States',
-        },
-        {
-          type: 'attention',
-          message: 'Response time in Brazil needs improvement',
-          region: 'Brazil',
-        },
-      ],
-    };
+    if (topPerforming[0] && topPerforming[0].npsScore > 0) {
+      insights.push({
+        type: 'positive',
+        message: `${topPerforming[0].country} leads with NPS of ${topPerforming[0].npsScore}`,
+        region: topPerforming[0].country,
+      });
+    }
+
+    const lowResponseRate = allRegions.filter(r => r.responseRate > 0 && r.responseRate < 70);
+    if (lowResponseRate.length > 0) {
+      insights.push({
+        type: 'attention',
+        message: `Response rate below 70% in ${lowResponseRate.map(r => r.country).join(', ')}`,
+        region: lowResponseRate[0].country,
+      });
+    }
+
+    return { topPerforming, needsImprovement, insights };
   }
 }
 
 export default new GeographicAnalyticsService();
-
