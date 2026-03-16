@@ -67,16 +67,9 @@ const audienceDashboardConfig: Record<SurveyAudience, AudienceDashboardConfig> =
       negative: 'Detractors',
     },
     bottomCardTitle: 'Top Roles',
-    bottomCardItems: [
-      { label: 'Engineers', value: 65, color: '#14b8a6' },
-      { label: 'Designers', value: 45, color: '#f59e0b' },
-      { label: 'Product', value: 55, color: '#10b981' },
-      { label: 'Sales', value: 38, color: '#ef4444' },
-    ],
+    bottomCardItems: [],
     insights: [
-      'Review interview wait times (avg 45 min delay)',
-      'Improve feedback turnaround (target: 48hrs)',
-      'Enhance recruiter communication frequency',
+      'No insights yet — collect survey responses to generate insights',
     ],
     showTopRoles: true,
     showRecruiterBreakdown: false,
@@ -116,17 +109,9 @@ const audienceDashboardConfig: Record<SurveyAudience, AudienceDashboardConfig> =
       negative: 'Dissatisfied',
     },
     bottomCardTitle: 'By Department',
-    bottomCardItems: [
-      { label: 'Engineering', value: 72, color: '#14b8a6' },
-      { label: 'Product', value: 68, color: '#f59e0b' },
-      { label: 'Design', value: 61, color: '#10b981' },
-      { label: 'Sales', value: 54, color: '#ef4444' },
-    ],
-    // Insights derived from Q8, Q9, Q10 open-text analysis
+    bottomCardItems: [],
     insights: [
-      'HMs most satisfied with: Communication & Partnership (Q6)',
-      'Key improvement: Process Speed (Q4) – target: 5 days screening → onsite',
-      'Action: Improve Candidate Quality (Q2) for senior roles',
+      'No insights yet — collect survey responses to generate insights',
     ],
     showTopRoles: false,
     showRecruiterBreakdown: true,
@@ -161,17 +146,9 @@ const audienceDashboardConfig: Record<SurveyAudience, AudienceDashboardConfig> =
       negative: 'Dissatisfied',
     },
     bottomCardTitle: 'NPS by Location',
-    bottomCardItems: [
-      { label: 'Berlin HQ', value: 78, color: '#14b8a6' },
-      { label: 'Bangalore', value: 71, color: '#f59e0b' },
-      { label: 'London', value: 69, color: '#10b981' },
-      { label: 'Remote', value: 65, color: '#8b5cf6' },
-    ],
-    // Insights derived from survey open-text themes
+    bottomCardItems: [],
     insights: [
-      'What people love: Flexible work policy & team culture',
-      'Top complaint: Berlin meeting room availability',
-      'Action: Improve remote equipment delivery (target: 3 days)',
+      'No insights yet — collect survey responses to generate insights',
     ],
     showTopRoles: false,
     showRecruiterBreakdown: false,
@@ -206,17 +183,9 @@ const audienceDashboardConfig: Record<SurveyAudience, AudienceDashboardConfig> =
       negative: 'Poor',
     },
     bottomCardTitle: 'By Service Area',
-    bottomCardItems: [
-      { label: 'Hardware Setup', value: 82, color: '#14b8a6' },
-      { label: 'Software Access', value: 76, color: '#f59e0b' },
-      { label: 'Security/VPN', value: 68, color: '#10b981' },
-      { label: 'Helpdesk', value: 71, color: '#3b82f6' },
-    ],
-    // Insights derived from survey open-text themes
+    bottomCardItems: [],
     insights: [
-      'Strong: Helpdesk responsiveness (avg 2hr response)',
-      'Improve: Day-1 laptop pre-config (target: 95% ready)',
-      'Action: Automate software provisioning for new hires',
+      'No insights yet — collect survey responses to generate insights',
     ],
     showTopRoles: false,
     showRecruiterBreakdown: false,
@@ -322,25 +291,12 @@ export default function Dashboard() {
       setOverview(overviewRes.data);
     } catch (err) {
       console.error('Error fetching dashboard data:', err);
-      // Mock data for demo - different defaults per audience
-      const mockNpsScores: Record<SurveyAudience, number> = {
-        [SurveyAudience.CANDIDATE]: 75,
-        [SurveyAudience.HIRING_MANAGER]: 68,
-        [SurveyAudience.WORKPLACE]: 72,
-        [SurveyAudience.IT_SUPPORT]: 81,
-      };
-      const mockResponseRates: Record<SurveyAudience, number> = {
-        [SurveyAudience.CANDIDATE]: 82,
-        [SurveyAudience.HIRING_MANAGER]: 64,
-        [SurveyAudience.WORKPLACE]: 71,
-        [SurveyAudience.IT_SUPPORT]: 88,
-      };
       setOverview({
         audience: selectedAudience,
-        npsScore: mockNpsScores[selectedAudience],
-        responseRate: mockResponseRates[selectedAudience],
-        responseRateChange: 15,
-        breakdown: { promoters: { percentage: 58 }, passives: { percentage: 24 }, detractors: { percentage: 18 } }
+        npsScore: 0,
+        responseRate: 0,
+        responseRateChange: 0,
+        breakdown: { promoters: { percentage: 0 }, passives: { percentage: 0 }, detractors: { percentage: 0 } }
       });
     } finally {
       setLoading(false);
@@ -425,68 +381,23 @@ export default function Dashboard() {
     );
   }
 
-  const npsScore = overview?.npsScore ?? 75;
-  const responseRate = overview?.responseRate ?? 82;
-  const responseRateChange = overview?.responseRateChange ?? 15;
+  const npsScore = overview?.npsScore ?? 0;
+  const responseRate = overview?.responseRate ?? 0;
+  const responseRateChange = overview?.responseRateChange ?? 0;
 
-  // Audience-specific breakdown percentages (mock data)
-  const getBreakdownData = () => {
-    const audienceBreakdowns: Record<SurveyAudience, number[]> = {
-      [SurveyAudience.CANDIDATE]: [58, 35, 45, 18],
-      [SurveyAudience.HIRING_MANAGER]: [72, 65, 78, 81],
-      [SurveyAudience.WORKPLACE]: [68, 74, 71, 66],
-      [SurveyAudience.IT_SUPPORT]: [85, 79, 82, 88],
-    };
-    return audienceBreakdowns[selectedAudience];
-  };
+  // Breakdown values from API data
+  const bp = overview?.breakdown || { promoters: { percentage: 0 }, passives: { percentage: 0 }, detractors: { percentage: 0 } };
+  const breakdownValues = [bp.promoters?.percentage ?? 0, 0, 0, bp.detractors?.percentage ?? 0];
 
-  const breakdownValues = getBreakdownData();
+  // NPS Gauge data from API
+  const gaugeData = [
+    { value: bp.promoters?.percentage ?? 0, color: '#10b981' },
+    { value: bp.passives?.percentage ?? 0, color: '#f59e0b' },
+    { value: bp.detractors?.percentage ?? 0, color: '#ef4444' }
+  ];
 
-  // NPS Gauge data - colors vary slightly by audience sentiment
-  const getGaugeData = () => {
-    const isPositiveNPS = selectedAudience === SurveyAudience.IT_SUPPORT;
-    return [
-      { value: 58, color: '#10b981' },  // Green - positive
-      { value: 24, color: '#f59e0b' },  // Amber - neutral
-      { value: 18, color: isPositiveNPS ? '#ef4444' : '#ef4444' }   // Red - negative
-    ];
-  };
-
-  const gaugeData = getGaugeData();
-
-  // Dynamic trend data based on time period
-  const getTrendData = () => {
-    const datasets = {
-      weekly: [
-        { month: 'Week 1', promoters: 120, passives: 80, detractors: 50 },
-        { month: 'Week 2', promoters: 140, passives: 90, detractors: 55 },
-        { month: 'Week 3', promoters: 160, passives: 100, detractors: 62 },
-        { month: 'Week 4', promoters: 175, passives: 108, detractors: 68 },
-        { month: 'Week 5', promoters: 195, passives: 118, detractors: 74 },
-        { month: 'Week 6', promoters: 210, passives: 130, detractors: 80 },
-      ],
-      monthly: [
-        { month: 'Jan', promoters: 320, passives: 220, detractors: 150 },
-        { month: 'Feb', promoters: 380, passives: 260, detractors: 180 },
-        { month: 'Mar', promoters: 450, passives: 310, detractors: 210 },
-        { month: 'Apr', promoters: 520, passives: 370, detractors: 250 },
-        { month: 'May', promoters: 600, passives: 430, detractors: 290 },
-        { month: 'Jun', promoters: 680, passives: 500, detractors: 340 },
-        { month: 'Jul', promoters: 760, passives: 570, detractors: 390 },
-        { month: 'Aug', promoters: 850, passives: 650, detractors: 440 },
-      ],
-      quarterly: [
-        { month: 'Q1 2023', promoters: 1200, passives: 850, detractors: 550 },
-        { month: 'Q2 2023', promoters: 1500, passives: 1050, detractors: 700 },
-        { month: 'Q3 2023', promoters: 1850, passives: 1300, detractors: 880 },
-        { month: 'Q4 2023', promoters: 2200, passives: 1580, detractors: 1050 },
-        { month: 'Q1 2024', promoters: 2600, passives: 1900, detractors: 1250 },
-      ],
-    };
-    return datasets[timePeriod];
-  };
-
-  const trendData = getTrendData();
+  // Trend data - empty when no data
+  const trendData: { month: string; promoters: number; passives: number; detractors: number }[] = [];
 
   // Audience-specific donut charts with dynamic labels from config
   const donutCharts = [
@@ -722,15 +633,15 @@ export default function Dashboard() {
               <div className="flex flex-wrap justify-center gap-2 sm:gap-4 mt-3 text-xs">
                 <div className="flex items-center gap-1.5">
                   <div className="w-2.5 h-2.5 rounded-full bg-green-500"></div>
-                  <span className="text-gray-600">{config.legendLabels.positive}: 58%</span>
+                  <span className="text-gray-600">{config.legendLabels.positive}: {bp.promoters?.percentage ?? 0}%</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <div className="w-2.5 h-2.5 rounded-full bg-amber-500"></div>
-                  <span className="text-gray-600">{config.legendLabels.neutral}: 24%</span>
+                  <span className="text-gray-600">{config.legendLabels.neutral}: {bp.passives?.percentage ?? 0}%</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <div className="w-2.5 h-2.5 rounded-full bg-red-500"></div>
-                  <span className="text-gray-600">{config.legendLabels.negative}: 18%</span>
+                  <span className="text-gray-600">{config.legendLabels.negative}: {bp.detractors?.percentage ?? 0}%</span>
                 </div>
               </div>
             </div>
@@ -746,7 +657,7 @@ export default function Dashboard() {
                 <div className="text-xs text-gray-500">(from {responseRate - responseRateChange}%)</div>
               </div>
               <div className="text-xs text-gray-600">
-                Based on the last <span className="font-semibold">6,000 invitations</span>
+                Based on collected survey responses
               </div>
             </div>
           </div>

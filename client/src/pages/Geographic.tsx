@@ -70,22 +70,22 @@ const LABEL_OFFSETS: Record<string, { dx: number; dy: number }> = {
 // ============================================
 const REGION_DATA = [
   // North America
-  { id: 'sf', name: 'San Francisco', coordinates: [-122.4194, 37.7749], nps: 72, responseRate: 85, candidates: 650, change: 5 },
-  { id: 'ny', name: 'New York', coordinates: [-74.0060, 40.7128], nps: 74, responseRate: 87, candidates: 820, change: 4 },
-  
+  { id: 'sf', name: 'San Francisco', coordinates: [-122.4194, 37.7749], nps: 0, responseRate: 0, candidates: 0, change: 0 },
+  { id: 'ny', name: 'New York', coordinates: [-74.0060, 40.7128], nps: 0, responseRate: 0, candidates: 0, change: 0 },
+
   // Europe
-  { id: 'prague', name: 'Prague', coordinates: [14.4378, 50.0755], nps: 78, responseRate: 88, candidates: 480, change: 8 },
-  { id: 'london', name: 'London', coordinates: [-0.1278, 51.5074], nps: 76, responseRate: 86, candidates: 680, change: 4 },
-  { id: 'berlin', name: 'Berlin', coordinates: [13.4050, 52.5200], nps: 74, responseRate: 84, candidates: 520, change: 3 },
-  
+  { id: 'prague', name: 'Prague', coordinates: [14.4378, 50.0755], nps: 0, responseRate: 0, candidates: 0, change: 0 },
+  { id: 'london', name: 'London', coordinates: [-0.1278, 51.5074], nps: 0, responseRate: 0, candidates: 0, change: 0 },
+  { id: 'berlin', name: 'Berlin', coordinates: [13.4050, 52.5200], nps: 0, responseRate: 0, candidates: 0, change: 0 },
+
   // Asia Pacific
-  { id: 'bangalore', name: 'Bangalore', coordinates: [77.5946, 12.9716], nps: 82, responseRate: 90, candidates: 1520, change: 12 },
-  { id: 'singapore', name: 'Singapore', coordinates: [103.8198, 1.3521], nps: 79, responseRate: 91, candidates: 380, change: 7 },
-  { id: 'tokyo', name: 'Tokyo', coordinates: [139.6503, 35.6762], nps: 75, responseRate: 92, candidates: 420, change: 6 },
-  { id: 'sydney', name: 'Sydney', coordinates: [151.2093, -33.8688], nps: 68, responseRate: 82, candidates: 295, change: 2 },
-  
+  { id: 'bangalore', name: 'Bangalore', coordinates: [77.5946, 12.9716], nps: 0, responseRate: 0, candidates: 0, change: 0 },
+  { id: 'singapore', name: 'Singapore', coordinates: [103.8198, 1.3521], nps: 0, responseRate: 0, candidates: 0, change: 0 },
+  { id: 'tokyo', name: 'Tokyo', coordinates: [139.6503, 35.6762], nps: 0, responseRate: 0, candidates: 0, change: 0 },
+  { id: 'sydney', name: 'Sydney', coordinates: [151.2093, -33.8688], nps: 0, responseRate: 0, candidates: 0, change: 0 },
+
   // South America
-  { id: 'saopaulo', name: 'São Paulo', coordinates: [-46.6333, -23.5505], nps: 60, responseRate: 65, candidates: 385, change: -3 },
+  { id: 'saopaulo', name: 'São Paulo', coordinates: [-46.6333, -23.5505], nps: 0, responseRate: 0, candidates: 0, change: 0 },
 ];
 
 // Date range presets
@@ -228,37 +228,16 @@ export default function Geographic() {
       }
       if (insightsRes.data && insightsRes.data.length > 0) {
         setInsights(insightsRes.data);
-      } else {
-        // Fallback insights
-        setInsights([
-          { title: 'India shows highest NPS growth (+12%) this quarter', type: 'positive', checked: false },
-          { title: 'Brazil response rate needs attention (65%)', type: 'negative', checked: false },
-          { title: 'Europe maintaining strong performance consistently', type: 'positive', checked: true },
-          { title: 'Consider expanding survey reach in Australia', type: 'info', checked: false },
-        ]);
       }
     } catch (error) {
       console.error('Error fetching geographic data:', error);
-      // Use fallback data
-      setInsights([
-        { title: 'India shows highest NPS growth (+12%) this quarter', type: 'positive', checked: false },
-        { title: 'Brazil response rate needs attention (65%)', type: 'negative', checked: false },
-        { title: 'Europe maintaining strong performance consistently', type: 'positive', checked: true },
-      ]);
     } finally {
       setLoading(false);
     }
   };
 
-  // Trend data for selected region
-  const getTrendData = () => [
-    { month: 'Jan', nps: selectedRegion.nps - 8 },
-    { month: 'Feb', nps: selectedRegion.nps - 5 },
-    { month: 'Mar', nps: selectedRegion.nps - 3 },
-    { month: 'Apr', nps: selectedRegion.nps - 1 },
-    { month: 'May', nps: selectedRegion.nps + 1 },
-    { month: 'Jun', nps: selectedRegion.nps },
-  ];
+  // Trend data for selected region - empty until real data available
+  const getTrendData = (): { month: string; nps: number }[] => [];
 
   // Handle preset selection - auto applies
   const handlePresetSelect = (preset: DatePreset) => {

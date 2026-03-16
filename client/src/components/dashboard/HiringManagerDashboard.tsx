@@ -30,7 +30,8 @@ import {
 } from 'recharts';
 import { TrendingUp, TrendingDown, Minus, Users, Send, CheckCircle2, MapPin, AlertCircle, User } from 'lucide-react';
 import { getHiringManagerDashboard } from '../../api/client';
-import { RECRUITER_PERFORMANCE_DATA } from '../../mocks/hiringManagerDashboardData';
+// Recruiter performance - empty until real data available
+const RECRUITER_PERFORMANCE_DATA: { name: string; nps: number; surveysCompleted: number; trend: 'up' | 'down' | 'stable'; avgResponseTime: string }[] = [];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES

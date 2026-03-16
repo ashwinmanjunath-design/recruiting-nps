@@ -105,146 +105,17 @@ const AUDIENCE_CONFIG = {
   },
 };
 
-// FALLBACK MOCK DATA - Used if API fails or returns empty data
-const FALLBACK_COMPOSITION_DATA = {
-  weekly: [
-    { period: 'Week 1', promotersPercentage: 48, passivesPercentage: 32, detractorsPercentage: 20, npsScore: 28, totalResponses: 250 },
-    { period: 'Week 2', promotersPercentage: 51, passivesPercentage: 30, detractorsPercentage: 19, npsScore: 32, totalResponses: 305 },
-    { period: 'Week 3', promotersPercentage: 53, passivesPercentage: 29, detractorsPercentage: 18, npsScore: 35, totalResponses: 360 },
-    { period: 'Week 4', promotersPercentage: 55, passivesPercentage: 28, detractorsPercentage: 17, npsScore: 38, totalResponses: 420 },
-  ],
-  monthly: [
-    { period: 'Jan', promotersPercentage: 45, passivesPercentage: 33, detractorsPercentage: 22, npsScore: 23, totalResponses: 1150 },
-    { period: 'Feb', promotersPercentage: 48, passivesPercentage: 32, detractorsPercentage: 20, npsScore: 28, totalResponses: 1280 },
-    { period: 'Mar', promotersPercentage: 50, passivesPercentage: 31, detractorsPercentage: 19, npsScore: 31, totalResponses: 1450 },
-    { period: 'Apr', promotersPercentage: 52, passivesPercentage: 30, detractorsPercentage: 18, npsScore: 34, totalResponses: 1620 },
-    { period: 'May', promotersPercentage: 54, passivesPercentage: 29, detractorsPercentage: 17, npsScore: 37, totalResponses: 1810 },
-    { period: 'Jun', promotersPercentage: 56, passivesPercentage: 28, detractorsPercentage: 16, npsScore: 40, totalResponses: 2010 },
-  ],
-  quarterly: [
-    { period: 'Q1 2023', promotersPercentage: 42, passivesPercentage: 35, detractorsPercentage: 23, npsScore: 19, totalResponses: 3350 },
-    { period: 'Q2 2023', promotersPercentage: 46, passivesPercentage: 33, detractorsPercentage: 21, npsScore: 25, totalResponses: 4050 },
-    { period: 'Q3 2023', promotersPercentage: 50, passivesPercentage: 31, detractorsPercentage: 19, npsScore: 31, totalResponses: 4750 },
-    { period: 'Q4 2023', promotersPercentage: 53, passivesPercentage: 30, detractorsPercentage: 17, npsScore: 36, totalResponses: 5450 },
-    { period: 'Q1 2024', promotersPercentage: 56, passivesPercentage: 28, detractorsPercentage: 16, npsScore: 40, totalResponses: 6150 },
-  ],
-};
-
-const FALLBACK_RESPONSE_DATA = {
-  weekly: [
-    { period: 'Week 1', responseRatePercentage: 75, timeToFeedbackHours: 28, totalSent: 420, totalResponded: 315 },
-    { period: 'Week 2', responseRatePercentage: 78, timeToFeedbackHours: 26, totalSent: 450, totalResponded: 351 },
-    { period: 'Week 3', responseRatePercentage: 80, timeToFeedbackHours: 24, totalSent: 480, totalResponded: 384 },
-    { period: 'Week 4', responseRatePercentage: 82, timeToFeedbackHours: 22, totalSent: 510, totalResponded: 418 },
-  ],
-  monthly: [
-    { period: 'Jan', responseRatePercentage: 72, timeToFeedbackHours: 32, totalSent: 1600, totalResponded: 1152 },
-    { period: 'Feb', responseRatePercentage: 74, timeToFeedbackHours: 30, totalSent: 1750, totalResponded: 1295 },
-    { period: 'Mar', responseRatePercentage: 76, timeToFeedbackHours: 28, totalSent: 1900, totalResponded: 1444 },
-    { period: 'Apr', responseRatePercentage: 78, timeToFeedbackHours: 26, totalSent: 2050, totalResponded: 1599 },
-    { period: 'May', responseRatePercentage: 80, timeToFeedbackHours: 24, totalSent: 2200, totalResponded: 1760 },
-    { period: 'Jun', responseRatePercentage: 82, timeToFeedbackHours: 22, totalSent: 2350, totalResponded: 1927 },
-  ],
-  quarterly: [
-    { period: 'Q1 2023', responseRatePercentage: 68, timeToFeedbackHours: 36, totalSent: 4500, totalResponded: 3060 },
-    { period: 'Q2 2023', responseRatePercentage: 72, timeToFeedbackHours: 32, totalSent: 5200, totalResponded: 3744 },
-    { period: 'Q3 2023', responseRatePercentage: 76, timeToFeedbackHours: 28, totalSent: 5900, totalResponded: 4484 },
-    { period: 'Q4 2023', responseRatePercentage: 79, timeToFeedbackHours: 25, totalSent: 6600, totalResponded: 5214 },
-    { period: 'Q1 2024', responseRatePercentage: 82, timeToFeedbackHours: 22, totalSent: 7300, totalResponded: 5986 },
-  ],
-};
-
-// Audience-specific fallback insights
-const FALLBACK_INSIGHTS_BY_AUDIENCE: Record<SurveyAudience, TrendInsight[]> = {
-  [SurveyAudience.CANDIDATE]: [
-    {
-      severity: 'success',
-      title: 'Candidate Response Rate Improvement',
-      description: 'Candidate response rate has increased by 10% over the last quarter, indicating better engagement.',
-      period: 'Q1 2025',
-      resolved: false,
-    },
-    {
-      severity: 'warning',
-      title: 'Significant NPS Drop in June',
-      description: 'Candidate NPS decreased by 8 points attributed to changes in technical interview format.',
-      period: 'June 2025',
-      resolved: false,
-    },
-    {
-      severity: 'info',
-      title: 'Improved Satisfaction in Tech Roles',
-      description: 'Engineering candidates reporting 15% higher satisfaction after updated interview rubrics.',
-      period: 'May 2025',
-      resolved: true,
-    },
-  ],
-  [SurveyAudience.HIRING_MANAGER]: [
-    {
-      severity: 'success',
-      title: 'Communication Scores Up',
-      description: 'Hiring manager satisfaction with recruiter communication (Q6) improved by 12% this quarter.',
-      period: 'Q1 2025',
-      resolved: false,
-    },
-    {
-      severity: 'warning',
-      title: 'Process Speed Concerns',
-      description: 'Multiple HMs flagged slow screening-to-onsite timelines. Average currently 8 days vs 5-day target.',
-      period: 'Q4 2024',
-      resolved: false,
-    },
-    {
-      severity: 'info',
-      title: 'Senior Role Quality Improved',
-      description: 'Candidate quality scores (Q2) for senior engineering roles improved by 18% after pipeline updates.',
-      period: 'March 2025',
-      resolved: true,
-    },
-  ],
-  [SurveyAudience.WORKPLACE]: [
-    {
-      severity: 'success',
-      title: 'Office Facilities Satisfaction Up',
-      description: 'Employee satisfaction with office facilities improved by 15% after Berlin office renovation.',
-      period: 'Q1 2025',
-      resolved: false,
-    },
-    {
-      severity: 'info',
-      title: 'Remote Work Policy Well Received',
-      description: 'New hybrid work policy received positive feedback across all locations.',
-      period: 'Feb 2025',
-      resolved: true,
-    },
-  ],
-  [SurveyAudience.IT_SUPPORT]: [
-    {
-      severity: 'success',
-      title: 'Day-1 Readiness Improved',
-      description: 'Systems ready on day 1 metric improved to 94% from 78% last quarter.',
-      period: 'Q1 2025',
-      resolved: false,
-    },
-    {
-      severity: 'warning',
-      title: 'Ticket Resolution Time Increasing',
-      description: 'Average ticket resolution time increased by 2 hours due to new security protocols.',
-      period: 'March 2025',
-      resolved: false,
-    },
-  ],
-};
-
-const FALLBACK_INSIGHTS = FALLBACK_INSIGHTS_BY_AUDIENCE[SurveyAudience.CANDIDATE];
-
-const FALLBACK_SUMMARY: TrendSummary = {
-  currentNps: 40,
-  npsChange: 3,
-  currentResponseRate: 82,
-  responseRateChange: 2,
-  avgTimeToFeedback: 22,
-  timeToFeedbackChange: -2,
+// EMPTY DEFAULTS - shown when no data available
+const EMPTY_COMPOSITION: NpsCompositionDataPoint[] = [];
+const EMPTY_RESPONSE: ResponseRateDataPoint[] = [];
+const EMPTY_INSIGHTS: TrendInsight[] = [];
+const EMPTY_SUMMARY: TrendSummary = {
+  currentNps: 0,
+  npsChange: 0,
+  currentResponseRate: 0,
+  responseRateChange: 0,
+  avgTimeToFeedback: 0,
+  timeToFeedbackChange: 0,
 };
 
 export default function Trends() {
@@ -259,11 +130,11 @@ export default function Trends() {
   const [comparisonBaseline, setComparisonBaseline] = useState<ComparisonBaseline>('engineers-q1');
   const [customDateRange, setCustomDateRange] = useState<{ from: string; to: string } | null>(null);
 
-  // Data states - Initialize with fallback data to ensure charts are never empty
-  const [compositionData, setCompositionData] = useState<NpsCompositionDataPoint[]>(FALLBACK_COMPOSITION_DATA.monthly);
-  const [responseData, setResponseData] = useState<ResponseRateDataPoint[]>(FALLBACK_RESPONSE_DATA.monthly);
-  const [insights, setInsights] = useState<TrendInsight[]>(FALLBACK_INSIGHTS);
-  const [summary, setSummary] = useState<TrendSummary>(FALLBACK_SUMMARY);
+  // Data states - Initialize empty, populated from API
+  const [compositionData, setCompositionData] = useState<NpsCompositionDataPoint[]>(EMPTY_COMPOSITION);
+  const [responseData, setResponseData] = useState<ResponseRateDataPoint[]>(EMPTY_RESPONSE);
+  const [insights, setInsights] = useState<TrendInsight[]>(EMPTY_INSIGHTS);
+  const [summary, setSummary] = useState<TrendSummary>(EMPTY_SUMMARY);
   const [loading, setLoading] = useState(false);
 
   // Get current audience config
@@ -290,39 +161,17 @@ export default function Trends() {
           getTrendsSummary(filters),
         ]);
 
-        // Use API data if available, otherwise keep fallback data
-        if (compositionRes.data.data && compositionRes.data.data.length > 0) {
-          setCompositionData(compositionRes.data.data);
-        } else {
-          // Use fallback for current interval
-          setCompositionData(FALLBACK_COMPOSITION_DATA[timePeriod]);
-        }
-
-        if (responseRes.data.data && responseRes.data.data.length > 0) {
-          setResponseData(responseRes.data.data);
-        } else {
-          setResponseData(FALLBACK_RESPONSE_DATA[timePeriod]);
-        }
-
-        if (insightsRes.data.insights && insightsRes.data.insights.length > 0) {
-          setInsights(insightsRes.data.insights);
-        } else {
-          // Use audience-specific fallback insights
-          setInsights(FALLBACK_INSIGHTS_BY_AUDIENCE[selectedAudience] || FALLBACK_INSIGHTS);
-        }
-
-        if (summaryRes.data && summaryRes.data.currentNps !== undefined) {
-          setSummary(summaryRes.data);
-        } else {
-          setSummary(FALLBACK_SUMMARY);
-        }
+        // Use API data if available, otherwise show empty
+        setCompositionData(compositionRes.data.data?.length > 0 ? compositionRes.data.data : EMPTY_COMPOSITION);
+        setResponseData(responseRes.data.data?.length > 0 ? responseRes.data.data : EMPTY_RESPONSE);
+        setInsights(insightsRes.data.insights?.length > 0 ? insightsRes.data.insights : EMPTY_INSIGHTS);
+        setSummary(summaryRes.data?.currentNps === undefined ? EMPTY_SUMMARY : summaryRes.data);
       } catch (error) {
-        console.error('Error fetching trends data, using fallback:', error);
-        // On error, use fallback data for current interval and audience
-        setCompositionData(FALLBACK_COMPOSITION_DATA[timePeriod]);
-        setResponseData(FALLBACK_RESPONSE_DATA[timePeriod]);
-        setInsights(FALLBACK_INSIGHTS_BY_AUDIENCE[selectedAudience] || FALLBACK_INSIGHTS);
-        setSummary(FALLBACK_SUMMARY);
+        console.error('Error fetching trends data:', error);
+        setCompositionData(EMPTY_COMPOSITION);
+        setResponseData(EMPTY_RESPONSE);
+        setInsights(EMPTY_INSIGHTS);
+        setSummary(EMPTY_SUMMARY);
       } finally {
         setLoading(false);
       }
