@@ -1,10 +1,10 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Search, MessageSquare, FileText, Users, CheckSquare, Briefcase, Building2, Monitor } from 'lucide-react';
-import { surveyTemplates, SURVEY_CATEGORIES, getTemplatesByAudience } from '../mocks/surveyTemplates';
+import { surveyTemplates, SURVEY_CATEGORIES } from '../mocks/surveyTemplates';
 import { CreateSurveyModal } from '../components/surveys/CreateSurveyModal';
 import type { CreateSurveyPayload } from '../../../shared/types/models/survey.types';
 import { SurveyAudience, SurveyAudienceLabels, SurveyAudienceColors } from '../../../shared/types/enums';
-import { createSurveyWithSend } from '../api/client';
+import { createSurveyWithSend, createSurveyTemplate, getQuestionBank } from '../api/client';
 import { useAudienceStore } from '../stores/audienceStore';
 
 // ============================================
@@ -19,6 +19,16 @@ interface Survey {
   responseRate: number;
   owner: string;
   status: 'Live' | 'Scheduled' | 'Draft';
+}
+
+type BuilderQuestionType = 'NPS' | 'TEXT' | 'RATING' | 'MULTIPLE_CHOICE';
+
+interface QuestionBankItem {
+  id: string;
+  question: string;
+  type: BuilderQuestionType;
+  required: boolean;
+  source: 'existing' | 'draft';
 }
 
 // Audience filter options
@@ -44,12 +54,20 @@ export default function SurveyManagement() {
   // The selected audience persists across all pages
   // Initialize the filter based on global audience selection
   // ============================================
-  const { audience: globalAudience, setAudience: setGlobalAudience } = useAudienceStore();
+  const { audience: globalAudience } = useAudienceStore();
   
   const [surveys, setSurveys] = useState<Survey[]>(INITIAL_SURVEYS);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [templateName, setTemplateName] = useState('');
+  const [templateDescription, setTemplateDescription] = useState('');
+  const [newQuestionText, setNewQuestionText] = useState('');
+  const [newQuestionType, setNewQuestionType] = useState<BuilderQuestionType>('TEXT');
+  const [newQuestionRequired, setNewQuestionRequired] = useState(true);
+  const [questionPool, setQuestionPool] = useState<QuestionBankItem[]>([]);
+  const [existingQuestionBank, setExistingQuestionBank] = useState<QuestionBankItem[]>([]);
+  const [selectedQuestionIds, setSelectedQuestionIds] = useState<string[]>([]);
   // Initialize filter from global audience (unless it's CANDIDATE which defaults to showing ALL)
   const [selectedAudienceFilter, setSelectedAudienceFilter] = useState<string>(
     globalAudience === SurveyAudience.CANDIDATE ? 'ALL' : globalAudience
@@ -90,6 +108,48 @@ export default function SurveyManagement() {
     if (selectedCategory === 'All') return surveyTemplates;
     return surveyTemplates.filter(t => t && t.category === selectedCategory);
   }, [selectedCategory]);
+
+  const allQuestions = useMemo(
+    () => [...existingQuestionBank, ...questionPool],
+    [existingQuestionBank, questionPool]
+  );
+
+  // Load existing question bank from backend
+  useEffect(() => {
+    const loadQuestionBank = async () => {
+      try {
+        const response = await getQuestionBank();
+        const grouped = response?.data?.questionBank || {};
+        const mapped: QuestionBankItem[] = [];
+
+        Object.entries(grouped).forEach(([typeKey, list]) => {
+          if (!Array.isArray(list)) return;
+
+          list.forEach((item: any) => {
+            let normalizedType: BuilderQuestionType = 'TEXT';
+            if (typeKey === 'NPS_SCALE') normalizedType = 'NPS';
+            if (typeKey === 'RATING') normalizedType = 'RATING';
+            if (typeKey === 'MULTIPLE_CHOICE') normalizedType = 'MULTIPLE_CHOICE';
+            if (typeKey === 'TEXT' || typeKey === 'YES_NO') normalizedType = 'TEXT';
+
+            mapped.push({
+              id: item.id || `existing-${Math.random().toString(36).slice(2, 10)}`,
+              question: item.question,
+              type: normalizedType,
+              required: item.required ?? true,
+              source: 'existing',
+            });
+          });
+        });
+
+        setExistingQuestionBank(mapped);
+      } catch (error) {
+        console.warn('[SurveyManagement] Could not load question bank from backend');
+      }
+    };
+
+    loadQuestionBank();
+  }, []);
 
   // Get audience badge component
   const getAudienceBadge = (audience: SurveyAudience) => {
@@ -168,6 +228,101 @@ export default function SurveyManagement() {
         return 'bg-gray-100 text-gray-600';
       default:
         return 'bg-gray-100 text-gray-600';
+    }
+  };
+
+  const addQuestionToPool = () => {
+    const questionText = newQuestionText.trim();
+    if (!questionText) {
+      alert('Please enter a question before adding.');
+      return;
+    }
+
+    const newQuestion: QuestionBankItem = {
+      id: `draft-${Date.now()}`,
+      question: questionText,
+      type: newQuestionType,
+      required: newQuestionRequired,
+      source: 'draft',
+    };
+
+    setQuestionPool((prev) => [newQuestion, ...prev]);
+    setSelectedQuestionIds((prev) => [newQuestion.id, ...prev]);
+    setNewQuestionText('');
+  };
+
+  const removeQuestionFromPool = (id: string) => {
+    setQuestionPool((prev) => prev.filter((q) => q.id !== id));
+    setSelectedQuestionIds((prev) => prev.filter((qId) => qId !== id));
+  };
+
+  const toggleQuestionSelection = (id: string) => {
+    setSelectedQuestionIds((prev) =>
+      prev.includes(id) ? prev.filter((qId) => qId !== id) : [...prev, id]
+    );
+  };
+
+  const handleCreateTemplateFromSelected = async () => {
+    const selectedQuestions = allQuestions.filter((q) => selectedQuestionIds.includes(q.id));
+
+    if (!templateName.trim()) {
+      alert('Please enter a template name.');
+      return;
+    }
+
+    if (selectedQuestions.length === 0) {
+      alert('Please select at least one question for the template.');
+      return;
+    }
+
+    try {
+      const payload = {
+        name: templateName.trim(),
+        description: templateDescription.trim() || undefined,
+        audience: SurveyAudience.CANDIDATE,
+        questions: selectedQuestions.map((q) => ({
+          type: q.type,
+          question: q.question,
+          required: q.required,
+        })),
+      };
+
+      await createSurveyTemplate(payload);
+
+      alert(`✅ Template "${templateName.trim()}" created with ${selectedQuestions.length} question(s).`);
+
+      // Refresh existing question bank
+      const response = await getQuestionBank();
+      const grouped = response?.data?.questionBank || {};
+      const mapped: QuestionBankItem[] = [];
+      Object.entries(grouped).forEach(([typeKey, list]) => {
+        if (!Array.isArray(list)) return;
+        list.forEach((item: any) => {
+          let normalizedType: BuilderQuestionType = 'TEXT';
+          if (typeKey === 'NPS_SCALE') normalizedType = 'NPS';
+          if (typeKey === 'RATING') normalizedType = 'RATING';
+          if (typeKey === 'MULTIPLE_CHOICE') normalizedType = 'MULTIPLE_CHOICE';
+          if (typeKey === 'TEXT' || typeKey === 'YES_NO') normalizedType = 'TEXT';
+
+          mapped.push({
+            id: item.id || `existing-${Math.random().toString(36).slice(2, 10)}`,
+            question: item.question,
+            type: normalizedType,
+            required: item.required ?? true,
+            source: 'existing',
+          });
+        });
+      });
+      setExistingQuestionBank(mapped);
+
+      // Reset builder
+      setTemplateName('');
+      setTemplateDescription('');
+      setQuestionPool([]);
+      setSelectedQuestionIds([]);
+    } catch (error: any) {
+      const message = error?.response?.data?.error || error?.message || 'Failed to create template';
+      alert(`❌ ${message}`);
     }
   };
 
@@ -354,36 +509,114 @@ export default function SurveyManagement() {
           {/* ============================================ */}
           <div className="card">
             <h3 className="text-base font-semibold text-gray-900 mb-4">Feedback Question Bank</h3>
-            <div className="space-y-2">
-              <div className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50">
-                <div className="w-9 h-9 bg-teal-100 rounded-lg flex items-center justify-center">
-                  <MessageSquare className="w-4 h-4 text-teal-600" />
+            <div className="space-y-4">
+              {/* Add question to pool */}
+              <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 space-y-3">
+                <p className="text-sm font-medium text-gray-900">1) Add Questions To Pool</p>
+                <input
+                  type="text"
+                  value={newQuestionText}
+                  onChange={(e) => setNewQuestionText(e.target.value)}
+                  placeholder="Type your survey question"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                />
+                <div className="flex flex-wrap items-center gap-3">
+                  <select
+                    value={newQuestionType}
+                    onChange={(e) => setNewQuestionType(e.target.value as BuilderQuestionType)}
+                    className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white"
+                  >
+                    <option value="TEXT">Text</option>
+                    <option value="NPS">NPS</option>
+                    <option value="RATING">Rating</option>
+                    <option value="MULTIPLE_CHOICE">Multiple Choice</option>
+                  </select>
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={newQuestionRequired}
+                      onChange={(e) => setNewQuestionRequired(e.target.checked)}
+                      className="w-4 h-4 rounded border-gray-300"
+                    />
+                    Required
+                  </label>
+                  <button
+                    type="button"
+                    onClick={addQuestionToPool}
+                    className="px-3 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90"
+                  >
+                    Add Question
+                  </button>
                 </div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-gray-900">NPS Question</p>
-                  <p className="text-xs text-gray-500">Standard 0-10 recommendation scale</p>
-                </div>
-                <span className="text-xs text-gray-400">Used in 4 templates</span>
               </div>
-              <div className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50">
-                <div className="w-9 h-9 bg-blue-100 rounded-lg flex items-center justify-center">
-                  <MessageSquare className="w-4 h-4 text-blue-600" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-gray-900">Overall Satisfaction</p>
-                  <p className="text-xs text-gray-500">5-point satisfaction scale</p>
-                </div>
-                <span className="text-xs text-gray-400">Used in 4 templates</span>
+
+              {/* Review and select all questions */}
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-gray-900">
+                  2) Review All Questions Together ({allQuestions.length})
+                </p>
+                {allQuestions.length === 0 ? (
+                  <p className="text-sm text-gray-500 border border-dashed border-gray-300 rounded-lg p-4">
+                    No questions added yet. Add questions above or load existing ones from backend.
+                  </p>
+                ) : (
+                  allQuestions.map((question) => (
+                    <div key={question.id} className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg">
+                      <input
+                        type="checkbox"
+                        checked={selectedQuestionIds.includes(question.id)}
+                        onChange={() => toggleQuestionSelection(question.id)}
+                        className="w-4 h-4 rounded border-gray-300"
+                      />
+                      <div className="w-9 h-9 bg-teal-100 rounded-lg flex items-center justify-center">
+                        <MessageSquare className="w-4 h-4 text-teal-600" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-900">{question.question}</p>
+                        <p className="text-xs text-gray-500">
+                          {question.type} • {question.required ? 'Required' : 'Optional'} • {question.source === 'draft' ? 'Draft' : 'Existing'}
+                        </p>
+                      </div>
+                      {question.source === 'draft' && (
+                        <button
+                          type="button"
+                          onClick={() => removeQuestionFromPool(question.id)}
+                          className="text-xs px-2 py-1 border border-red-200 text-red-600 rounded hover:bg-red-50"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  ))
+                )}
               </div>
-              <div className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50">
-                <div className="w-9 h-9 bg-amber-100 rounded-lg flex items-center justify-center">
-                  <MessageSquare className="w-4 h-4 text-amber-600" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-gray-900">Open Feedback</p>
-                  <p className="text-xs text-gray-500">Free-text response for detailed feedback</p>
-                </div>
-                <span className="text-xs text-gray-400">Used in 4 templates</span>
+
+              {/* Create template from selected */}
+              <div className="border border-gray-200 rounded-lg p-4 bg-white space-y-3">
+                <p className="text-sm font-medium text-gray-900">
+                  3) Create Template From Selected Questions ({selectedQuestionIds.length} selected)
+                </p>
+                <input
+                  type="text"
+                  value={templateName}
+                  onChange={(e) => setTemplateName(e.target.value)}
+                  placeholder="Template name (e.g., Post-Interview Core)"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                />
+                <textarea
+                  value={templateDescription}
+                  onChange={(e) => setTemplateDescription(e.target.value)}
+                  placeholder="Optional template description"
+                  rows={3}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                />
+                <button
+                  type="button"
+                  onClick={handleCreateTemplateFromSelected}
+                  className="px-4 py-2 text-sm font-medium bg-teal-500 text-white rounded-lg hover:bg-teal-600"
+                >
+                  Create Template
+                </button>
               </div>
             </div>
           </div>

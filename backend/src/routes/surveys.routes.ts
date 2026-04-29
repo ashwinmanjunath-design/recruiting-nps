@@ -233,7 +233,7 @@ router.get('/question-bank', async (req, res) => {
         id: q.id,
         question: q.question,
         type: q.type,
-        required: q.required
+        required: (q as any).isRequired ?? true
       });
       return acc;
     }, {});
@@ -331,18 +331,27 @@ router.post('/templates', requirePermission(Permission.MANAGE_SURVEYS), async (r
   try {
     const data = surveyTemplateSchema.parse(req.body);
 
+    const normalizedQuestions = data.questions.map((q, index) => {
+      const prismaType =
+        q.type === 'NPS' ? 'NPS_SCALE' : q.type;
+
+      return {
+        type: prismaType as any,
+        question: q.question,
+        isRequired: q.required ?? true,
+        options: q.options || [],
+        order: index + 1
+      };
+    });
+
     const template = await prisma.surveyTemplate.create({
       data: {
         name: data.name,
         description: data.description,
+        audience: (data as any).audience || 'CANDIDATE',
+        trigger: 'MANUAL',
         questions: {
-          create: data.questions.map((q, index) => ({
-            type: q.type,
-            question: q.question,
-            required: q.required ?? true,
-            options: q.options ? JSON.stringify(q.options) : null,
-            order: index + 1
-          }))
+          create: normalizedQuestions
         }
       },
       include: { questions: true }
@@ -500,4 +509,3 @@ router.post('/', async (req: AuthRequest, res) => {
 });
 
 export default router;
-
