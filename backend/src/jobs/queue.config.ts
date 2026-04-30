@@ -1,52 +1,90 @@
-import { Queue, Worker, Job, QueueEvents } from 'bullmq';
+import { Queue, QueueEvents } from 'bullmq';
 import IORedis from 'ioredis';
 
 const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+export const isQueueEnabled = process.env.REDIS_ENABLED === 'true';
 
-// Create Redis connection for BullMQ
-export const connection = new IORedis(redisUrl, {
-  maxRetriesPerRequest: null,
-  enableReadyCheck: false,
+type QueueLike = {
+  add: (name: string, data: unknown, opts?: unknown) => Promise<{ id: string }>;
+  close: () => Promise<void>;
+};
+
+const createDisabledQueue = (queueName: string): QueueLike => ({
+  add: async (name: string) => {
+    console.warn(
+      `[Queue Disabled] Skipped enqueue for "${queueName}" job "${name}". ` +
+      'Set REDIS_ENABLED=true with a valid REDIS_URL to enable background workers.'
+    );
+    return { id: `disabled-${queueName}-${Date.now()}` };
+  },
+  close: async () => {},
 });
+
+let connection: IORedis | null = null;
+
+if (isQueueEnabled) {
+  connection = new IORedis(redisUrl, {
+    maxRetriesPerRequest: null,
+    enableReadyCheck: false,
+  });
+
+  connection.on('error', (error) => {
+    console.error('Redis connection error:', error.message);
+  });
+} else {
+  console.warn('⚠️ REDIS_ENABLED is not true. Background queues are disabled.');
+}
 
 // ==================== Queue Definitions ====================
 
-export const surveySendQueue = new Queue('survey-send', { connection });
-export const srSyncQueue = new Queue('sr-sync', { connection });
-export const bulkImportQueue = new Queue('bulk-import', { connection });
-export const metricsAggregateQueue = new Queue('metrics-aggregate', { connection });
+export const surveySendQueue: QueueLike = connection
+  ? (new Queue('survey-send', { connection }) as unknown as QueueLike)
+  : createDisabledQueue('survey-send');
+export const srSyncQueue: QueueLike = connection
+  ? (new Queue('sr-sync', { connection }) as unknown as QueueLike)
+  : createDisabledQueue('sr-sync');
+export const bulkImportQueue: QueueLike = connection
+  ? (new Queue('bulk-import', { connection }) as unknown as QueueLike)
+  : createDisabledQueue('bulk-import');
+export const metricsAggregateQueue: QueueLike = connection
+  ? (new Queue('metrics-aggregate', { connection }) as unknown as QueueLike)
+  : createDisabledQueue('metrics-aggregate');
 
 // ==================== Queue Events ====================
 
-const surveySendEvents = new QueueEvents('survey-send', { connection });
-const srSyncEvents = new QueueEvents('sr-sync', { connection });
-const bulkImportEvents = new QueueEvents('bulk-import', { connection });
-const metricsAggregateEvents = new QueueEvents('metrics-aggregate', { connection });
+if (connection) {
+  const surveySendEvents = new QueueEvents('survey-send', { connection });
+  const srSyncEvents = new QueueEvents('sr-sync', { connection });
+  const bulkImportEvents = new QueueEvents('bulk-import', { connection });
+  const metricsAggregateEvents = new QueueEvents('metrics-aggregate', { connection });
 
-// Event Listeners
-surveySendEvents.on('completed', ({ jobId }) => {
-  console.log(`✅ Survey send job ${jobId} completed`);
-});
+  // Event Listeners
+  surveySendEvents.on('completed', ({ jobId }) => {
+    console.log(`✅ Survey send job ${jobId} completed`);
+  });
 
-surveySendEvents.on('failed', ({ jobId, failedReason }) => {
-  console.error(`❌ Survey send job ${jobId} failed:`, failedReason);
-});
+  surveySendEvents.on('failed', ({ jobId, failedReason }) => {
+    console.error(`❌ Survey send job ${jobId} failed:`, failedReason);
+  });
 
-srSyncEvents.on('completed', ({ jobId }) => {
-  console.log(`✅ SmartRecruiters sync job ${jobId} completed`);
-});
+  srSyncEvents.on('completed', ({ jobId }) => {
+    console.log(`✅ SmartRecruiters sync job ${jobId} completed`);
+  });
 
-srSyncEvents.on('failed', ({ jobId, failedReason }) => {
-  console.error(`❌ SmartRecruiters sync job ${jobId} failed:`, failedReason);
-});
+  srSyncEvents.on('failed', ({ jobId, failedReason }) => {
+    console.error(`❌ SmartRecruiters sync job ${jobId} failed:`, failedReason);
+  });
 
-bulkImportEvents.on('completed', ({ jobId }) => {
-  console.log(`✅ Bulk import job ${jobId} completed`);
-});
+  bulkImportEvents.on('completed', ({ jobId }) => {
+    console.log(`✅ Bulk import job ${jobId} completed`);
+  });
 
-bulkImportEvents.on('failed', ({ jobId, failedReason }) => {
-  console.error(`❌ Bulk import job ${jobId} failed:`, failedReason);
-});
+  bulkImportEvents.on('failed', ({ jobId, failedReason }) => {
+    console.error(`❌ Bulk import job ${jobId} failed:`, failedReason);
+  });
+
+  void metricsAggregateEvents;
+}
 
 // ==================== Job Types ====================
 
@@ -130,15 +168,17 @@ export const closeQueues = async () => {
   await srSyncQueue.close();
   await bulkImportQueue.close();
   await metricsAggregateQueue.close();
-  await connection.quit();
+  if (connection) {
+    await connection.quit();
+  }
   console.log('✅ All queues closed');
 };
 
 export const queues = {
-  surveySendQueue,
-  srSyncQueue,
-  bulkImportQueue,
-  metricsAggregateQueue,
+  surveySend: surveySendQueue,
+  srSync: srSyncQueue,
+  bulkImport: bulkImportQueue,
+  metricsAggregate: metricsAggregateQueue,
   addSurveySendJob,
   addSRSyncJob,
   addBulkImportJob,
@@ -148,4 +188,3 @@ export const queues = {
 };
 
 export default queues;
-

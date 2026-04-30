@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { PrismaClient } from '@prisma/client';
-import { queues } from '../jobs/queue.config';
+import { isQueueEnabled, queues } from '../jobs/queue.config';
 import { authMiddleware } from '../middleware/auth.middleware';
 import axios from 'axios';
 
@@ -17,6 +17,12 @@ if (process.env.NODE_ENV !== 'production') {
    */
   router.post('/send-survey', authMiddleware, async (req, res) => {
     try {
+      if (!isQueueEnabled) {
+        return res.status(503).json({
+          error: 'Background jobs are disabled. Enable Redis to use this test endpoint.',
+        });
+      }
+
       const schema = z.object({
         surveyId: z.string(),
         to: z.string().email().optional(),
@@ -243,4 +249,3 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 export default router;
-

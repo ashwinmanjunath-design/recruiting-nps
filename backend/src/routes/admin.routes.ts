@@ -6,7 +6,7 @@ import multer from 'multer';
 import { authMiddleware, AuthRequest } from '../middleware/auth.middleware';
 import { requirePermission } from '../middleware/rbac.middleware';
 import { Permission, UserRole } from '../../../shared/types/enums';
-import { queues } from '../jobs/queue.config';
+import { isQueueEnabled, queues } from '../jobs/queue.config';
 import { validateFileType, validateFileSize, sanitizeString } from '../utils/validation';
 import { secureLogger } from '../utils/logger';
 
@@ -233,6 +233,12 @@ router.post('/integrations/smartrecruiters', requirePermission(Permission.MANAGE
 // POST /api/admin/integrations/smartrecruiters/sync
 router.post('/integrations/smartrecruiters/sync', requirePermission(Permission.MANAGE_INTEGRATIONS), async (req, res) => {
   try {
+    if (!isQueueEnabled) {
+      return res.status(503).json({
+        error: 'Background jobs are disabled. Enable Redis to run SmartRecruiters sync.',
+      });
+    }
+
     // Queue sync job
     await queues.srSync.add('manual-sync', { manual: true });
 
@@ -280,6 +286,12 @@ router.get('/imports', requirePermission(Permission.MANAGE_IMPORTS), async (req,
 // POST /api/admin/imports/upload
 router.post('/imports/upload', requirePermission(Permission.MANAGE_IMPORTS), upload.single('file'), async (req: AuthRequest, res) => {
   try {
+    if (!isQueueEnabled) {
+      return res.status(503).json({
+        error: 'Background jobs are disabled. Enable Redis to process imports.',
+      });
+    }
+
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
@@ -390,4 +402,3 @@ router.get('/imports/:id', requirePermission(Permission.MANAGE_IMPORTS), async (
 });
 
 export default router;
-

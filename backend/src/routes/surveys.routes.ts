@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { authMiddleware, AuthRequest } from '../middleware/auth.middleware';
 import { requirePermission } from '../middleware/rbac.middleware';
 import { Permission } from '../../../shared/types/enums';
-import { queues } from '../jobs/queue.config';
+import { isQueueEnabled, queues } from '../jobs/queue.config';
 import type { CreateSurveyPayload, CreateSurveyResponse, SurveyRecipient } from '../../../shared/types/models/survey.types';
 import emailService from '../services/email.service';
 import { surveySendRateLimiter } from '../middleware/rateLimiter.middleware';
@@ -293,16 +293,16 @@ router.post('/distribute', requirePermission(Permission.MANAGE_SURVEYS), async (
           data: {
             templateId: data.templateId,
             candidateId,
-            status: data.scheduleFor ? 'PENDING' : 'SENT',
+            status: data.scheduleFor || !isQueueEnabled ? 'PENDING' : 'SENT',
             scheduledFor: data.scheduleFor ? new Date(data.scheduleFor) : undefined,
-            sentAt: data.scheduleFor ? undefined : new Date()
+            sentAt: data.scheduleFor || !isQueueEnabled ? undefined : new Date()
           }
         })
       )
     );
 
     // Queue for sending (if not scheduled)
-    if (!data.scheduleFor) {
+    if (!data.scheduleFor && isQueueEnabled) {
       for (const survey of surveys) {
         await queues.surveySend.add('send-survey', {
           surveyId: survey.id,
@@ -312,8 +312,13 @@ router.post('/distribute', requirePermission(Permission.MANAGE_SURVEYS), async (
     }
 
     res.status(201).json({
-      message: `${surveys.length} surveys ${data.scheduleFor ? 'scheduled' : 'queued'} successfully`,
-      count: surveys.length
+      message: data.scheduleFor
+        ? `${surveys.length} surveys scheduled successfully`
+        : isQueueEnabled
+          ? `${surveys.length} surveys queued successfully`
+          : `${surveys.length} surveys created. Background sending is disabled because Redis is off.`,
+      count: surveys.length,
+      queueEnabled: isQueueEnabled
     });
   } catch (error: any) {
     console.error('Distribute surveys error:', error);
