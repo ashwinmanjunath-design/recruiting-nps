@@ -18,6 +18,9 @@ export default function Login() {
     try {
       const response = await login(email, password);
       localStorage.setItem('token', response.data.token);
+      if (response.data.refreshToken) {
+        localStorage.setItem('refreshToken', response.data.refreshToken);
+      }
       localStorage.setItem('user', JSON.stringify(response.data.user));
       // Redirect to Experience Suite after login
       navigate('/experience-suite');
@@ -96,4 +99,3 @@ export default function Login() {
     </div>
   );
 }
-

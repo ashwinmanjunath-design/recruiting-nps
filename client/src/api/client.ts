@@ -10,6 +10,13 @@ const api = axios.create({
   },
 });
 
+const authApi = axios.create({
+  baseURL: API_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
 // Add auth token to requests
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
@@ -18,6 +25,57 @@ api.interceptors.request.use((config) => {
   }
   return config;
 });
+
+// Auto-refresh expired access tokens and retry once.
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error?.config;
+    const status = error?.response?.status;
+    const message = error?.response?.data?.error;
+
+    const isAuthError =
+      status === 401 &&
+      (message === 'Token expired' || message === 'Invalid token' || message === 'Authentication failed');
+
+    if (isAuthError && originalRequest && !originalRequest._retry) {
+      originalRequest._retry = true;
+      const refreshToken = localStorage.getItem('refreshToken');
+
+      if (refreshToken) {
+        try {
+          const refreshResponse = await authApi.post('/auth/refresh', { refreshToken });
+          const newToken = refreshResponse?.data?.token;
+          const newRefreshToken = refreshResponse?.data?.refreshToken;
+
+          if (newToken) {
+            localStorage.setItem('token', newToken);
+          }
+          if (newRefreshToken) {
+            localStorage.setItem('refreshToken', newRefreshToken);
+          }
+
+          originalRequest.headers = originalRequest.headers || {};
+          originalRequest.headers.Authorization = `Bearer ${newToken}`;
+
+          return api(originalRequest);
+        } catch (refreshError) {
+          // fall through to forced logout below
+        }
+      }
+
+      localStorage.removeItem('token');
+      localStorage.removeItem('refreshToken');
+      localStorage.removeItem('user');
+
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
+    }
+
+    return Promise.reject(error);
+  }
+);
 
 // Common params interface with audience filtering
 interface AudienceParams {
