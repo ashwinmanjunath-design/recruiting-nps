@@ -4,7 +4,13 @@ import { surveyTemplates, SURVEY_CATEGORIES } from '../mocks/surveyTemplates';
 import { CreateSurveyModal } from '../components/surveys/CreateSurveyModal';
 import type { CreateSurveyPayload } from '../../../shared/types/models/survey.types';
 import { SurveyAudience, SurveyAudienceLabels, SurveyAudienceColors } from '../../../shared/types/enums';
-import { createSurveyWithSend, createSurveyTemplate, getQuestionBank } from '../api/client';
+import {
+  createSurveyWithSend,
+  createSurveyTemplate,
+  getQuestionBank,
+  getSurveyTemplates,
+  saveQuestionBankQuestions,
+} from '../api/client';
 import { useAudienceStore } from '../stores/audienceStore';
 
 // ============================================
@@ -29,6 +35,14 @@ interface QuestionBankItem {
   type: BuilderQuestionType;
   required: boolean;
   source: 'existing' | 'draft';
+}
+
+interface SavedSurveyTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  questionCount: number;
+  usageCount: number;
 }
 
 // Audience filter options
@@ -68,6 +82,7 @@ export default function SurveyManagement() {
   const [questionPool, setQuestionPool] = useState<QuestionBankItem[]>([]);
   const [existingQuestionBank, setExistingQuestionBank] = useState<QuestionBankItem[]>([]);
   const [selectedQuestionIds, setSelectedQuestionIds] = useState<string[]>([]);
+  const [savedSurveyTemplates, setSavedSurveyTemplates] = useState<SavedSurveyTemplate[]>([]);
   // Initialize filter from global audience (unless it's CANDIDATE which defaults to showing ALL)
   const [selectedAudienceFilter, setSelectedAudienceFilter] = useState<string>(
     globalAudience === SurveyAudience.CANDIDATE ? 'ALL' : globalAudience
@@ -114,41 +129,54 @@ export default function SurveyManagement() {
     [existingQuestionBank, questionPool]
   );
 
-  // Load existing question bank from backend
-  useEffect(() => {
-    const loadQuestionBank = async () => {
-      try {
-        const response = await getQuestionBank();
-        const grouped = response?.data?.questionBank || {};
-        const mapped: QuestionBankItem[] = [];
+  const mapQuestionTypeFromBackend = (typeKey: string): BuilderQuestionType => {
+    if (typeKey === 'NPS_SCALE') return 'NPS';
+    if (typeKey === 'RATING') return 'RATING';
+    if (typeKey === 'MULTIPLE_CHOICE') return 'MULTIPLE_CHOICE';
+    return 'TEXT';
+  };
 
-        Object.entries(grouped).forEach(([typeKey, list]) => {
-          if (!Array.isArray(list)) return;
+  const loadQuestionBank = async () => {
+    try {
+      const response = await getQuestionBank();
+      const grouped = response?.data?.questionBank || {};
+      const mapped: QuestionBankItem[] = [];
 
-          list.forEach((item: any) => {
-            let normalizedType: BuilderQuestionType = 'TEXT';
-            if (typeKey === 'NPS_SCALE') normalizedType = 'NPS';
-            if (typeKey === 'RATING') normalizedType = 'RATING';
-            if (typeKey === 'MULTIPLE_CHOICE') normalizedType = 'MULTIPLE_CHOICE';
-            if (typeKey === 'TEXT' || typeKey === 'YES_NO') normalizedType = 'TEXT';
+      Object.entries(grouped).forEach(([typeKey, list]) => {
+        if (!Array.isArray(list)) return;
 
-            mapped.push({
-              id: item.id || `existing-${Math.random().toString(36).slice(2, 10)}`,
-              question: item.question,
-              type: normalizedType,
-              required: item.required ?? true,
-              source: 'existing',
-            });
+        list.forEach((item: any) => {
+          mapped.push({
+            id: item.id || `existing-${Math.random().toString(36).slice(2, 10)}`,
+            question: item.question,
+            type: mapQuestionTypeFromBackend(typeKey),
+            required: item.required ?? true,
+            source: 'existing',
           });
         });
+      });
 
-        setExistingQuestionBank(mapped);
-      } catch (error) {
-        console.warn('[SurveyManagement] Could not load question bank from backend');
-      }
-    };
+      setExistingQuestionBank(mapped);
+    } catch (error) {
+      console.warn('[SurveyManagement] Could not load question bank from backend');
+    }
+  };
 
+  const loadSavedSurveys = async () => {
+    try {
+      const response = await getSurveyTemplates();
+      const templates = response?.data?.templates || [];
+      setSavedSurveyTemplates(
+        templates.filter((t: any) => t.name !== '__QUESTION_BANK_LIBRARY__')
+      );
+    } catch (error) {
+      console.warn('[SurveyManagement] Could not load saved surveys');
+    }
+  };
+
+  useEffect(() => {
     loadQuestionBank();
+    loadSavedSurveys();
   }, []);
 
   // Get audience badge component
@@ -262,16 +290,50 @@ export default function SurveyManagement() {
     );
   };
 
-  const handleCreateTemplateFromSelected = async () => {
+  const handleSaveSelectedQuestionsToBank = async () => {
+    const draftSelected = allQuestions
+      .filter((q) => selectedQuestionIds.includes(q.id) && q.source === 'draft');
+
+    if (draftSelected.length === 0) {
+      alert('Select at least one draft question to save to question bank.');
+      return;
+    }
+
+    try {
+      const payload = {
+        questions: draftSelected.map((q) => ({
+          type: q.type,
+          question: q.question,
+          required: q.required,
+        })),
+      };
+
+      const response = await saveQuestionBankQuestions(payload);
+      const savedCount = response?.data?.savedCount ?? draftSelected.length;
+
+      alert(`✅ Saved ${savedCount} question(s) to question bank.`);
+
+      await loadQuestionBank();
+      setQuestionPool((prev) => prev.filter((q) => !selectedQuestionIds.includes(q.id)));
+      setSelectedQuestionIds((prev) =>
+        prev.filter((id) => !draftSelected.some((q) => q.id === id))
+      );
+    } catch (error: any) {
+      const message = error?.response?.data?.error || error?.message || 'Failed to save questions';
+      alert(`❌ ${message}`);
+    }
+  };
+
+  const handleCreateSurveyFromSelected = async () => {
     const selectedQuestions = allQuestions.filter((q) => selectedQuestionIds.includes(q.id));
 
     if (!templateName.trim()) {
-      alert('Please enter a template name.');
+      alert('Please enter a survey name.');
       return;
     }
 
     if (selectedQuestions.length === 0) {
-      alert('Please select at least one question for the template.');
+      alert('Please select at least one question for the survey.');
       return;
     }
 
@@ -289,31 +351,10 @@ export default function SurveyManagement() {
 
       await createSurveyTemplate(payload);
 
-      alert(`✅ Template "${templateName.trim()}" created with ${selectedQuestions.length} question(s).`);
+      alert(`✅ Survey "${templateName.trim()}" created with ${selectedQuestions.length} question(s).`);
 
-      // Refresh existing question bank
-      const response = await getQuestionBank();
-      const grouped = response?.data?.questionBank || {};
-      const mapped: QuestionBankItem[] = [];
-      Object.entries(grouped).forEach(([typeKey, list]) => {
-        if (!Array.isArray(list)) return;
-        list.forEach((item: any) => {
-          let normalizedType: BuilderQuestionType = 'TEXT';
-          if (typeKey === 'NPS_SCALE') normalizedType = 'NPS';
-          if (typeKey === 'RATING') normalizedType = 'RATING';
-          if (typeKey === 'MULTIPLE_CHOICE') normalizedType = 'MULTIPLE_CHOICE';
-          if (typeKey === 'TEXT' || typeKey === 'YES_NO') normalizedType = 'TEXT';
-
-          mapped.push({
-            id: item.id || `existing-${Math.random().toString(36).slice(2, 10)}`,
-            question: item.question,
-            type: normalizedType,
-            required: item.required ?? true,
-            source: 'existing',
-          });
-        });
-      });
-      setExistingQuestionBank(mapped);
+      await loadQuestionBank();
+      await loadSavedSurveys();
 
       // Reset builder
       setTemplateName('');
@@ -321,7 +362,7 @@ export default function SurveyManagement() {
       setQuestionPool([]);
       setSelectedQuestionIds([]);
     } catch (error: any) {
-      const message = error?.response?.data?.error || error?.message || 'Failed to create template';
+      const message = error?.response?.data?.error || error?.message || 'Failed to create survey';
       alert(`❌ ${message}`);
     }
   };
@@ -591,16 +632,16 @@ export default function SurveyManagement() {
                 )}
               </div>
 
-              {/* Create template from selected */}
+              {/* Save questions and create survey */}
               <div className="border border-gray-200 rounded-lg p-4 bg-white space-y-3">
                 <p className="text-sm font-medium text-gray-900">
-                  3) Create Template From Selected Questions ({selectedQuestionIds.length} selected)
+                  3) Save Questions And Create Survey ({selectedQuestionIds.length} selected)
                 </p>
                 <input
                   type="text"
                   value={templateName}
                   onChange={(e) => setTemplateName(e.target.value)}
-                  placeholder="Template name (e.g., Post-Interview Core)"
+                  placeholder="Survey name (e.g., Post-Interview Core)"
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 />
                 <textarea
@@ -610,15 +651,48 @@ export default function SurveyManagement() {
                   rows={3}
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 />
-                <button
-                  type="button"
-                  onClick={handleCreateTemplateFromSelected}
-                  className="px-4 py-2 text-sm font-medium bg-teal-500 text-white rounded-lg hover:bg-teal-600"
-                >
-                  Create Template
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSaveSelectedQuestionsToBank}
+                    className="px-4 py-2 text-sm font-medium border border-teal-500 text-teal-700 rounded-lg hover:bg-teal-50"
+                  >
+                    Save Selected Questions
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCreateSurveyFromSelected}
+                    className="px-4 py-2 text-sm font-medium bg-teal-500 text-white rounded-lg hover:bg-teal-600"
+                  >
+                    Create Survey
+                  </button>
+                </div>
               </div>
             </div>
+          </div>
+
+          {/* ============================================ */}
+          {/* SAVED SURVEYS */}
+          {/* ============================================ */}
+          <div className="card">
+            <h3 className="text-base font-semibold text-gray-900 mb-4">Saved Surveys ({savedSurveyTemplates.length})</h3>
+            {savedSurveyTemplates.length === 0 ? (
+              <p className="text-sm text-gray-500">No saved surveys yet. Create one from selected questions above.</p>
+            ) : (
+              <div className="space-y-2">
+                {savedSurveyTemplates.map((template) => (
+                  <div key={template.id} className="border border-gray-200 rounded-lg p-3">
+                    <p className="text-sm font-medium text-gray-900">{template.name}</p>
+                    <p className="text-xs text-gray-500">
+                      {template.questionCount} questions • used {template.usageCount} times
+                    </p>
+                    {template.description && (
+                      <p className="text-xs text-gray-500 mt-1">{template.description}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

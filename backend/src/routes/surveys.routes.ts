@@ -245,6 +245,101 @@ router.get('/question-bank', async (req, res) => {
   }
 });
 
+// POST /api/survey-management/question-bank/save
+router.post('/question-bank/save', requirePermission(Permission.MANAGE_SURVEYS), async (req: AuthRequest, res) => {
+  try {
+    const payloadSchema = z.object({
+      questions: z
+        .array(
+          z.object({
+            type: z.enum(['NPS', 'TEXT', 'RATING', 'MULTIPLE_CHOICE']),
+            question: z.string().min(1).max(500),
+            required: z.boolean().optional(),
+            options: z.array(z.string().max(200)).optional(),
+          })
+        )
+        .min(1),
+    });
+
+    const data = payloadSchema.parse(req.body);
+
+    const QUESTION_BANK_TEMPLATE_NAME = '__QUESTION_BANK_LIBRARY__';
+
+    // Store bank questions under a hidden system template so they persist independently.
+    let questionBankTemplate = await prisma.surveyTemplate.findFirst({
+      where: { name: QUESTION_BANK_TEMPLATE_NAME },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (!questionBankTemplate) {
+      questionBankTemplate = await prisma.surveyTemplate.create({
+        data: {
+          name: QUESTION_BANK_TEMPLATE_NAME,
+          description: 'System-managed question library for survey builder.',
+          audience: 'CANDIDATE',
+          trigger: 'MANUAL',
+          isActive: false,
+        },
+      });
+    }
+
+    const existingQuestions = await prisma.surveyQuestion.findMany({
+      where: { templateId: questionBankTemplate.id },
+      select: { question: true, type: true },
+    });
+
+    const existingKeySet = new Set(
+      existingQuestions.map((q) => `${q.type}::${q.question.trim().toLowerCase()}`)
+    );
+
+    const toCreate = data.questions
+      .map((q, index) => {
+        const prismaType = q.type === 'NPS' ? 'NPS_SCALE' : q.type;
+        return {
+          prismaType,
+          question: q.question.trim(),
+          isRequired: q.required ?? true,
+          options: q.options || [],
+          order: index + 1,
+        };
+      })
+      .filter((q) => {
+        const key = `${q.prismaType}::${q.question.toLowerCase()}`;
+        if (existingKeySet.has(key)) return false;
+        existingKeySet.add(key);
+        return true;
+      });
+
+    if (toCreate.length > 0) {
+      const orderStart = existingQuestions.length + 1;
+      await prisma.surveyQuestion.createMany({
+        data: toCreate.map((q, idx) => ({
+          templateId: questionBankTemplate.id,
+          type: q.prismaType as any,
+          question: q.question,
+          isRequired: q.isRequired,
+          options: q.options,
+          order: orderStart + idx,
+        })),
+      });
+    }
+
+    return res.status(201).json({
+      message: 'Questions saved to question bank',
+      savedCount: toCreate.length,
+      totalRequested: data.questions.length,
+    });
+  } catch (error: any) {
+    console.error('Save question bank error:', error);
+
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: 'Invalid input', details: error.errors });
+    }
+
+    return res.status(500).json({ error: 'Failed to save questions to bank' });
+  }
+});
+
 // GET /api/survey-management/stats
 router.get('/stats', async (req, res) => {
   try {

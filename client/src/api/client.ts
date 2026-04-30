@@ -156,8 +156,10 @@ export const distributeSurvey = (data: any) =>
 export const getQuestionBank = () => 
   api.get('/survey-management/question-bank');
 
+export const saveQuestionBankQuestions = (data: any) =>
+  api.post('/survey-management/question-bank/save', data);
+
 export const getSurveyStats = () => 
   api.get('/survey-management/stats');
 
 export default api;
-
