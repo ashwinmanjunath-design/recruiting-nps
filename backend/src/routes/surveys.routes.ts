@@ -94,11 +94,25 @@ const getOrCreateCandidateByEmail = async (email: string) => {
   });
 };
 
-const createExternalSurveyRecord = async (email: string, surveyName: string, createdBy?: string) => {
-  const [template, candidate] = await Promise.all([
-    getOrCreateExternalTemplate(),
-    getOrCreateCandidateByEmail(email),
-  ]);
+const createExternalSurveyRecord = async (
+  email: string,
+  surveyName: string,
+  createdBy?: string,
+  templateId?: string
+) => {
+  const candidate = await getOrCreateCandidateByEmail(email);
+
+  let template = null as any;
+  if (templateId) {
+    template = await prisma.surveyTemplate.findUnique({
+      where: { id: templateId },
+      include: { questions: true },
+    });
+  }
+
+  if (!template) {
+    template = await getOrCreateExternalTemplate();
+  }
 
   const token = `srv_${nanoid(32)}_${Date.now()}`;
   const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
@@ -164,7 +178,12 @@ router.post('/send', authMiddleware, requirePermission(Permission.MANAGE_SURVEYS
 
     for (const email of finalRecipients) {
       try {
-        const surveyRecord = await createExternalSurveyRecord(email, payload.surveyName, req.user?.userId);
+        const surveyRecord = await createExternalSurveyRecord(
+          email,
+          payload.surveyName,
+          req.user?.userId,
+          payload.templateId
+        );
         const recipientSurveyLink = `${frontendUrl}/survey/${surveyRecord.token}`;
 
         secureLogger.info('Sending survey email', {
@@ -635,7 +654,12 @@ router.post('/', async (req: AuthRequest, res) => {
 
       for (const email of emailsToSend) {
         try {
-          const surveyRecord = await createExternalSurveyRecord(email, payload.survey.name, userId);
+          const surveyRecord = await createExternalSurveyRecord(
+            email,
+            payload.survey.name,
+            userId,
+            payload.survey.templateId || undefined
+          );
           createdSurveyIds.push(surveyRecord.id);
 
           console.log(`[SurveyEmail] Sending email to: ${email}`);
@@ -684,7 +708,7 @@ router.post('/', async (req: AuthRequest, res) => {
     };
 
     console.log('[POST /api/surveys] Survey created successfully:', {
-      surveyId,
+      surveyId: createdSurveyIds[0] || 'n/a',
       name: payload.survey.name,
       sendMode: payload.email.sendMode,
       recipientCount,

@@ -9,6 +9,7 @@ import {
   createSurveyTemplate,
   getQuestionBank,
   getSurveyTemplates,
+  sendSurveyEmails,
   saveQuestionBankQuestions,
 } from '../api/client';
 import { useAudienceStore } from '../stores/audienceStore';
@@ -367,6 +368,48 @@ export default function SurveyManagement() {
     }
   };
 
+  const handleSendSavedSurvey = async (template: SavedSurveyTemplate) => {
+    const recipientsInput = window.prompt(
+      `Enter recipient email(s) for "${template.name}"\nUse comma-separated values:`,
+      ''
+    );
+
+    if (!recipientsInput) return;
+
+    const recipients = recipientsInput
+      .split(',')
+      .map((email) => email.trim())
+      .filter(Boolean);
+
+    if (recipients.length === 0) {
+      alert('Please enter at least one recipient email.');
+      return;
+    }
+
+    const fromEmail =
+      window.prompt('From email address:', 'noreply@company.com')?.trim() || '';
+
+    if (!fromEmail) {
+      alert('From email is required.');
+      return;
+    }
+
+    try {
+      const response = await sendSurveyEmails({
+        templateId: template.id,
+        surveyName: template.name,
+        recipients,
+        fromEmail,
+        sendImmediately: true,
+      });
+
+      alert(`✅ Sent "${template.name}" to ${response?.data?.sentTo ?? recipients.length} recipient(s).`);
+    } catch (error: any) {
+      const message = error?.response?.data?.message || error?.response?.data?.error || error?.message;
+      alert(`❌ Failed to send survey: ${message || 'Unknown error'}`);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Page Title */}
@@ -689,6 +732,13 @@ export default function SurveyManagement() {
                     {template.description && (
                       <p className="text-xs text-gray-500 mt-1">{template.description}</p>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => handleSendSavedSurvey(template)}
+                      className="mt-2 px-3 py-1.5 text-xs font-medium bg-teal-500 text-white rounded-lg hover:bg-teal-600"
+                    >
+                      Send Survey
+                    </button>
                   </div>
                 ))}
               </div>

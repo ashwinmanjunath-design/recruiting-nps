@@ -18,6 +18,7 @@ export type SurveyAudienceType = z.infer<typeof SurveyAudienceEnum>;
  * Survey send request schema with comprehensive validation
  */
 export const surveySendSchema = z.object({
+  templateId: z.string().optional(),
   surveyName: z
     .string()
     .min(1, 'Survey name is required')

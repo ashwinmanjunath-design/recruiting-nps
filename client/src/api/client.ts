@@ -188,6 +188,7 @@ export const createSurveyWithSend = (data: any) =>
   api.post('/surveys', data);
 
 export const sendSurveyEmails = (data: {
+  templateId?: string;
   surveyName: string;
   recipients: string[];
   fromEmail: string;
