@@ -1,9 +1,10 @@
 import { z } from 'zod';
 
 /**
- * Email domain whitelist - only allow emails from these domains
+ * Optional email domain whitelist.
+ * If ALLOWED_EMAIL_DOMAINS is empty/unset, all domains are allowed.
  */
-const ALLOWED_EMAIL_DOMAINS = (process.env.ALLOWED_EMAIL_DOMAINS || 'omio.com')
+const ALLOWED_EMAIL_DOMAINS = (process.env.ALLOWED_EMAIL_DOMAINS || '')
   .split(',')
   .map(d => d.trim().toLowerCase());
 
@@ -21,12 +22,15 @@ export function validateEmail(email: string): { valid: boolean; error?: string }
     return { valid: false, error: 'Invalid email format' };
   }
 
-  // Domain whitelist check
+  // Domain whitelist check (optional)
   const domain = email.split('@')[1]?.toLowerCase();
-  if (!domain || !ALLOWED_EMAIL_DOMAINS.includes(domain)) {
+  const hasWhitelist = ALLOWED_EMAIL_DOMAINS.some(Boolean);
+  if (!domain || (hasWhitelist && !ALLOWED_EMAIL_DOMAINS.includes(domain))) {
     return {
       valid: false,
-      error: `Email domain must be one of: ${ALLOWED_EMAIL_DOMAINS.join(', ')}`,
+      error: hasWhitelist
+        ? `Email domain must be one of: ${ALLOWED_EMAIL_DOMAINS.filter(Boolean).join(', ')}`
+        : 'Invalid email domain',
     };
   }
 
@@ -106,4 +110,3 @@ export function validateFileType(filename: string, allowedTypes: string[]): bool
 export function validateFileSize(size: number, maxSizeBytes: number): boolean {
   return size <= maxSizeBytes;
 }
-

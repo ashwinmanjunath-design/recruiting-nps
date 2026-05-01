@@ -15,6 +15,116 @@ import { nanoid } from 'nanoid';
 const router = Router();
 const prisma = new PrismaClient();
 
+const EXTERNAL_TEMPLATE_NAME = '__EXTERNAL_EMAIL_NPS__';
+
+const getOrCreateExternalTemplate = async () => {
+  let template = await prisma.surveyTemplate.findFirst({
+    where: { name: EXTERNAL_TEMPLATE_NAME },
+    include: { questions: true },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  if (!template) {
+    template = await prisma.surveyTemplate.create({
+      data: {
+        name: EXTERNAL_TEMPLATE_NAME,
+        description: 'System-managed template for external email survey links.',
+        audience: 'CANDIDATE',
+        trigger: 'MANUAL',
+        isActive: false,
+        questions: {
+          create: [
+            {
+              type: 'NPS_SCALE',
+              question: 'How likely are you to recommend our interview process to a friend or colleague?',
+              isRequired: true,
+              order: 1,
+              options: [],
+            },
+            {
+              type: 'TEXT',
+              question: 'What could we improve about our interview process?',
+              isRequired: false,
+              order: 2,
+              options: [],
+            },
+          ],
+        },
+      },
+      include: { questions: true },
+    });
+  } else if (!template.questions || template.questions.length === 0) {
+    await prisma.surveyQuestion.createMany({
+      data: [
+        {
+          templateId: template.id,
+          type: 'NPS_SCALE',
+          question: 'How likely are you to recommend our interview process to a friend or colleague?',
+          isRequired: true,
+          order: 1,
+          options: [],
+        },
+        {
+          templateId: template.id,
+          type: 'TEXT',
+          question: 'What could we improve about our interview process?',
+          isRequired: false,
+          order: 2,
+          options: [],
+        },
+      ],
+    });
+  }
+
+  return template;
+};
+
+const getOrCreateCandidateByEmail = async (email: string) => {
+  const normalizedEmail = email.toLowerCase().trim();
+  const existing = await prisma.candidate.findUnique({ where: { email: normalizedEmail } });
+  if (existing) return existing;
+
+  return prisma.candidate.create({
+    data: {
+      email: normalizedEmail,
+      name: normalizedEmail.split('@')[0] || 'Survey Recipient',
+      role: 'External Recipient',
+      status: 'ACTIVE',
+    },
+  });
+};
+
+const createExternalSurveyRecord = async (email: string, surveyName: string, createdBy?: string) => {
+  const [template, candidate] = await Promise.all([
+    getOrCreateExternalTemplate(),
+    getOrCreateCandidateByEmail(email),
+  ]);
+
+  const token = `srv_${nanoid(32)}_${Date.now()}`;
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+  const survey = await prisma.survey.create({
+    data: {
+      token,
+      candidateId: candidate.id,
+      templateId: template.id,
+      audience: 'CANDIDATE',
+      createdBy,
+      sentAt: new Date(),
+      expiresAt,
+      status: 'SENT',
+      sendViaEmail: true,
+      sendViaSMS: false,
+      metadata: {
+        surveyName,
+        recipientEmail: email,
+      },
+    },
+  });
+
+  return survey;
+};
+
 // POST /api/surveys/send - Send survey emails (REQUIRES AUTH + RBAC)
 router.post('/send', authMiddleware, requirePermission(Permission.MANAGE_SURVEYS), surveySendRateLimiter, async (req: AuthRequest, res) => {
   try {
@@ -47,30 +157,15 @@ router.post('/send', authMiddleware, requirePermission(Permission.MANAGE_SURVEYS
     console.log('[POST /api/surveys/send] ⚠️  FINAL RECIPIENTS (will send to these exact emails):', JSON.stringify(finalRecipients, null, 2));
     console.log('[POST /api/surveys/send] Recipient count:', finalRecipients.length);
 
-    // Generate secure, time-limited survey tokens
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-    const tokenExpiryHours = 30 * 24; // 30 days
-    const expiresAt = new Date(Date.now() + tokenExpiryHours * 60 * 60 * 1000);
     
     const emailResults: Array<{ email: string; success: boolean; messageId?: string }> = [];
     const emailErrors: Array<{ email: string; error: string }> = [];
 
     for (const email of finalRecipients) {
       try {
-        // Generate unique, secure token for this recipient
-        // Using nanoid for cryptographically strong random tokens
-        const recipientToken = `srv_${nanoid(32)}_${Date.now()}`;
-        const recipientSurveyLink = `${frontendUrl}/survey/${recipientToken}`;
-
-        // TODO: Store token in database with expiresAt for validation
-        // await prisma.surveyToken.create({
-        //   data: {
-        //     token: recipientToken,
-        //     email,
-        //     surveyId: surveyId,
-        //     expiresAt,
-        //   }
-        // });
+        const surveyRecord = await createExternalSurveyRecord(email, payload.surveyName, req.user?.userId);
+        const recipientSurveyLink = `${frontendUrl}/survey/${surveyRecord.token}`;
 
         secureLogger.info('Sending survey email', {
           to: email,
@@ -516,13 +611,8 @@ router.post('/', async (req: AuthRequest, res) => {
 
     // Calculate recipient count
     const recipientCount = recipientEmails.length || payload.email.recipients.length;
-
-    // Create survey ID (mock for now, would be from DB insert)
-    const surveyId = `srv_${Date.now()}`;
-
-    // Generate survey link (mock token)
-    const surveyToken = `survey_${surveyId}_${Date.now()}`;
-    const surveyLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/survey/${surveyToken}`;
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const createdSurveyIds: string[] = [];
 
     // If sendImmediately is true, send emails now
     if (payload.email.sendImmediately) {
@@ -545,12 +635,15 @@ router.post('/', async (req: AuthRequest, res) => {
 
       for (const email of emailsToSend) {
         try {
+          const surveyRecord = await createExternalSurveyRecord(email, payload.survey.name, userId);
+          createdSurveyIds.push(surveyRecord.id);
+
           console.log(`[SurveyEmail] Sending email to: ${email}`);
           
           const result = await emailService.sendSurveyEmail({
             to: email,
             candidateName: payload.email.recipients.find(r => r.email === email)?.name || 'Candidate',
-            surveyLink,
+            surveyLink: `${frontendUrl}/survey/${surveyRecord.token}`,
             templateName: payload.survey.name,
             subject: payload.email.subject,
             fromEmail: payload.email.fromEmail,
@@ -584,7 +677,7 @@ router.post('/', async (req: AuthRequest, res) => {
     }
 
     const response: CreateSurveyResponse = {
-      surveyId,
+      surveyId: createdSurveyIds[0] || `srv_${Date.now()}`,
       status: payload.email.sendImmediately ? 'sending' : 'scheduled',
       sendMode: payload.email.sendMode,
       recipientCount,

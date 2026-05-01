@@ -37,44 +37,73 @@ router.post('/', async (req, res) => {
 
     const { token, npsScore, feedback } = validationResult.data;
 
-    // TODO: Validate token against database
-    // For now, basic token format validation
-    if (!token.startsWith('srv_')) {
-      secureLogger.warn('Invalid survey token format', { token: token.substring(0, 20), ip: req.ip });
-      return res.status(400).json({ error: 'Invalid survey token' });
+    const survey = await prisma.survey.findUnique({
+      where: { token },
+      include: {
+        template: {
+          include: { questions: true },
+        },
+      },
+    });
+
+    if (!survey) {
+      return res.status(404).json({ error: 'Survey not found or invalid token' });
     }
 
-    // Extract timestamp from token (format: srv_<nanoid>_<timestamp>)
-    const parts = token.split('_');
-    if (parts.length < 3) {
-      return res.status(400).json({ error: 'Invalid survey token format' });
+    if (survey.respondedAt) {
+      return res.status(400).json({ error: 'This survey has already been submitted' });
     }
 
-    const tokenTimestamp = parseInt(parts[parts.length - 1], 10);
-    if (isNaN(tokenTimestamp)) {
-      return res.status(400).json({ error: 'Invalid survey token' });
-    }
-
-    // Check if token is expired (30 days)
-    const tokenAge = Date.now() - tokenTimestamp;
-    const maxAge = 30 * 24 * 60 * 60 * 1000; // 30 days in milliseconds
-    if (tokenAge > maxAge) {
-      secureLogger.warn('Expired survey token used', { tokenAge, ip: req.ip });
+    if (survey.expiresAt < new Date()) {
       return res.status(400).json({ error: 'Survey token has expired' });
     }
 
-    // TODO: Store response in database
-    // await prisma.surveyResponse.create({
-    //   data: {
-    //     surveyToken: token,
-    //     npsScore,
-    //     feedback: feedback || null,
-    //     submittedAt: new Date(),
-    //   }
-    // });
+    const npsQuestion =
+      survey.template.questions.find((q: any) => q.type === 'NPS_SCALE') ||
+      survey.template.questions[0];
+    const feedbackQuestion =
+      survey.template.questions.find((q: any) => q.type === 'TEXT') || null;
+
+    if (!npsQuestion) {
+      return res.status(500).json({ error: 'Survey is misconfigured' });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.surveyResponse.create({
+        data: {
+          surveyId: survey.id,
+          candidateId: survey.candidateId,
+          questionId: npsQuestion.id,
+          audience: survey.audience,
+          score: npsScore,
+          text: null,
+        },
+      });
+
+      if (feedback && feedback.trim() && feedbackQuestion) {
+        await tx.surveyResponse.create({
+          data: {
+            surveyId: survey.id,
+            candidateId: survey.candidateId,
+            questionId: feedbackQuestion.id,
+            audience: survey.audience,
+            score: null,
+            text: feedback.trim(),
+          },
+        });
+      }
+
+      await tx.survey.update({
+        where: { id: survey.id },
+        data: {
+          respondedAt: new Date(),
+          status: 'COMPLETED',
+        },
+      });
+    });
 
     secureLogger.info('Survey response submitted', {
-      token: token.substring(0, 20) + '...',
+      surveyId: survey.id,
       npsScore,
       hasFeedback: !!feedback,
       ip: req.ip,
@@ -101,32 +130,31 @@ router.get('/validate/:token', async (req, res) => {
   try {
     const { token } = req.params;
 
-    if (!token || !token.startsWith('srv_')) {
-      return res.status(400).json({ valid: false, error: 'Invalid token format' });
+    if (!token) {
+      return res.status(400).json({ valid: false, error: 'Token is required' });
     }
 
-    // Extract timestamp from token
-    const parts = token.split('_');
-    if (parts.length < 3) {
-      return res.status(400).json({ valid: false, error: 'Invalid token format' });
+    const survey = await prisma.survey.findUnique({
+      where: { token },
+      select: {
+        id: true,
+        expiresAt: true,
+        respondedAt: true,
+      },
+    });
+
+    if (!survey) {
+      return res.status(404).json({ valid: false, error: 'Survey token not found' });
     }
 
-    const tokenTimestamp = parseInt(parts[parts.length - 1], 10);
-    if (isNaN(tokenTimestamp)) {
-      return res.status(400).json({ valid: false, error: 'Invalid token' });
-    }
-
-    // Check if token is expired
-    const tokenAge = Date.now() - tokenTimestamp;
-    const maxAge = 30 * 24 * 60 * 60 * 1000; // 30 days
-    const isExpired = tokenAge > maxAge;
-
-    // TODO: Check database for token existence and usage status
+    const isExpired = survey.expiresAt < new Date();
+    const alreadySubmitted = !!survey.respondedAt;
 
     res.json({
-      valid: !isExpired,
+      valid: !isExpired && !alreadySubmitted,
       expired: isExpired,
-      expiresAt: new Date(tokenTimestamp + maxAge).toISOString(),
+      alreadySubmitted,
+      expiresAt: survey.expiresAt.toISOString(),
     });
   } catch (error: any) {
     secureLogger.error('Token validation error', { error: error.message, ip: req.ip });
@@ -135,4 +163,3 @@ router.get('/validate/:token', async (req, res) => {
 });
 
 export default router;
-

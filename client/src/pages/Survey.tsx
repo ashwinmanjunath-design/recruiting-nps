@@ -1,17 +1,97 @@
 import { useParams } from 'react-router-dom';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 export default function Survey() {
   const { token } = useParams<{ token: string }>();
   const [submitted, setSubmitted] = useState(false);
   const [npsScore, setNpsScore] = useState<number | null>(null);
   const [feedback, setFeedback] = useState('');
+  const [validating, setValidating] = useState(true);
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+
+  useEffect(() => {
+    const validateToken = async () => {
+      if (!token) {
+        setValidationError('Invalid survey link.');
+        setValidating(false);
+        return;
+      }
+
+      try {
+        const response = await fetch(`${API_URL}/survey-response/validate/${encodeURIComponent(token)}`);
+        const data = await response.json();
+
+        if (!response.ok || !data.valid) {
+          if (data?.alreadySubmitted) {
+            setValidationError('This survey was already submitted.');
+          } else if (data?.expired) {
+            setValidationError('This survey link has expired.');
+          } else {
+            setValidationError(data?.error || 'This survey link is not valid.');
+          }
+        }
+      } catch (error) {
+        setValidationError('Could not validate survey link. Please try again.');
+      } finally {
+        setValidating(false);
+      }
+    };
+
+    validateToken();
+  }, [API_URL, token]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: Submit to backend API
-    console.log('Survey submitted:', { token, npsScore, feedback });
-    setSubmitted(true);
+    if (!token || npsScore === null) return;
+
+    setSubmitting(true);
+    try {
+      const response = await fetch(`${API_URL}/survey-response`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token,
+          npsScore,
+          feedback: feedback.trim() || undefined,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to submit survey');
+      }
+
+      setSubmitted(true);
+    } catch (error: any) {
+      alert(error?.message || 'Failed to submit survey');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (validating) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-teal-50 to-cyan-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-2xl shadow-lg p-8 text-center">
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Validating Survey Link</h2>
+          <p className="text-gray-600">Please wait...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (validationError) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-teal-50 to-cyan-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-2xl shadow-lg p-8 text-center">
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Survey Unavailable</h2>
+          <p className="text-gray-600">{validationError}</p>
+        </div>
+      </div>
+    );
   };
 
   if (submitted) {
@@ -95,14 +175,14 @@ export default function Survey() {
           {/* Submit Button */}
           <button
             type="submit"
-            disabled={npsScore === null}
+            disabled={npsScore === null || submitting}
             className={`w-full py-3 rounded-lg font-semibold text-white transition-all ${
-              npsScore === null
+              npsScore === null || submitting
                 ? 'bg-gray-300 cursor-not-allowed'
                 : 'bg-teal-500 hover:bg-teal-600 shadow-lg hover:shadow-xl'
             }`}
           >
-            Submit Feedback
+            {submitting ? 'Submitting...' : 'Submit Feedback'}
           </button>
 
           <p className="text-xs text-center text-gray-500">
@@ -113,4 +193,3 @@ export default function Survey() {
     </div>
   );
 }
-

@@ -31,7 +31,7 @@ export const surveySendSchema = z.object({
         const validation = validateEmail(email);
         return validation.valid;
       },
-      { message: 'fromEmail must be from an allowed domain' }
+      { message: 'Invalid fromEmail' }
     )
     .transform((email) => sanitizeEmailHeader(email.toLowerCase().trim())),
   recipients: z
@@ -45,7 +45,7 @@ export const surveySendSchema = z.object({
           return validation.valid;
         });
       },
-      { message: 'All recipients must be from allowed domains' }
+      { message: 'One or more recipient emails are invalid' }
     )
     .transform((emails) => emails.map((e) => sanitizeEmailHeader(e.toLowerCase().trim()))),
   audience: SurveyAudienceEnum.optional().default('CANDIDATE'),
@@ -85,7 +85,7 @@ export const createSurveySchema = z.object({
           const validation = validateEmail(email);
           return validation.valid;
         },
-        { message: 'fromEmail must be from an allowed domain' }
+        { message: 'Invalid fromEmail' }
       )
       .transform((email) => sanitizeEmailHeader(email.toLowerCase().trim())),
     subject: z.string().max(200).optional().transform((val) => (val ? sanitizeEmailHeader(val) : undefined)),
@@ -135,4 +135,3 @@ export const dashboardFilterSchema = z.object({
   role: z.string().optional(),
   region: z.string().optional(),
 });
-
