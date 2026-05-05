@@ -220,9 +220,10 @@ router.post('/send', authMiddleware, requirePermission(Permission.MANAGE_SURVEYS
         errors: emailErrors,
         userId: req.user?.userId,
       });
+      const firstError = emailErrors[0]?.error || 'Unknown email provider error';
       return res.status(500).json({
         success: false,
-        message: 'Failed to send survey emails',
+        message: `Failed to send survey email: ${firstError}`,
         errors: emailErrors,
       });
     }

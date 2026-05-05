@@ -405,8 +405,18 @@ export default function SurveyManagement() {
 
       alert(`✅ Sent "${template.name}" to ${response?.data?.sentTo ?? recipients.length} recipient(s).`);
     } catch (error: any) {
-      const message = error?.response?.data?.message || error?.response?.data?.error || error?.message;
-      alert(`❌ Failed to send survey: ${message || 'Unknown error'}`);
+      const baseMessage =
+        error?.response?.data?.message || error?.response?.data?.error || error?.message;
+      const detailedErrors = error?.response?.data?.errors;
+
+      if (Array.isArray(detailedErrors) && detailedErrors.length > 0) {
+        const formatted = detailedErrors
+          .map((e: any) => `- ${e.email}: ${e.error}`)
+          .join('\n');
+        alert(`❌ Failed to send survey: ${baseMessage || 'Unknown error'}\n\n${formatted}`);
+      } else {
+        alert(`❌ Failed to send survey: ${baseMessage || 'Unknown error'}`);
+      }
     }
   };
 
