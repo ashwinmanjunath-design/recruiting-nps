@@ -46,6 +46,8 @@ interface SavedSurveyTemplate {
   usageCount: number;
 }
 
+const DEFAULT_FROM_EMAIL = 'ashwin.manjunath@omio.com';
+
 // Audience filter options
 const AUDIENCE_FILTER_OPTIONS = [
   { value: 'ALL', label: 'All', icon: null },
@@ -387,12 +389,7 @@ export default function SurveyManagement() {
     }
 
     const fromEmail =
-      window.prompt('From email address:', 'noreply@company.com')?.trim() || '';
-
-    if (!fromEmail) {
-      alert('From email is required.');
-      return;
-    }
+      window.prompt('From email address:', DEFAULT_FROM_EMAIL)?.trim() || DEFAULT_FROM_EMAIL;
 
     try {
       const response = await sendSurveyEmails({
