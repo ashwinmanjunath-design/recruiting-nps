@@ -23,7 +23,7 @@ const MOCK_CANDIDATES = [
 ];
 
 // Default from email address
-const DEFAULT_FROM_EMAIL = "ashwin.manjunath@omio.com";
+const DEFAULT_FROM_EMAIL = "princygupta1014@gmail.com";
 
 export const CreateSurveyModal: React.FC<CreateSurveyModalProps> = ({
   isOpen,
@@ -485,7 +485,7 @@ export const CreateSurveyModal: React.FC<CreateSurveyModalProps> = ({
                     className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
                     value={fromEmail}
                     onChange={(e) => setFromEmail(e.target.value)}
-                    placeholder="ashwin.manjunath@omio.com"
+                    placeholder="princygupta1014@gmail.com"
                   />
                 </div>
 

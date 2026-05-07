@@ -46,7 +46,7 @@ interface SavedSurveyTemplate {
   usageCount: number;
 }
 
-const DEFAULT_FROM_EMAIL = 'ashwin.manjunath@omio.com';
+const DEFAULT_FROM_EMAIL = 'princygupta1014@gmail.com';
 
 // Audience filter options
 const AUDIENCE_FILTER_OPTIONS = [
@@ -388,15 +388,12 @@ export default function SurveyManagement() {
       return;
     }
 
-    const fromEmail =
-      window.prompt('From email address:', DEFAULT_FROM_EMAIL)?.trim() || DEFAULT_FROM_EMAIL;
-
     try {
       const response = await sendSurveyEmails({
         templateId: template.id,
         surveyName: template.name,
         recipients,
-        fromEmail,
+        fromEmail: DEFAULT_FROM_EMAIL,
         sendImmediately: true,
       });
 
