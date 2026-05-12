@@ -8,12 +8,6 @@ const REQUIRED_ENV_VARS = [
   'DATABASE_URL',
 ] as const;
 
-const REQUIRED_ENV_VARS_PROD = [
-  'SMTP_HOST',
-  'SMTP_USER',
-  'SMTP_PASS',
-] as const;
-
 /**
  * Validate environment variables on startup
  */
@@ -29,9 +23,21 @@ export function validateEnvironment(): void {
 
   // Check production-specific vars
   if (process.env.NODE_ENV === 'production') {
-    for (const varName of REQUIRED_ENV_VARS_PROD) {
-      if (!process.env[varName] || process.env[varName] === '') {
-        missing.push(varName);
+    const provider = (process.env.EMAIL_PROVIDER || 'smtp').toLowerCase();
+
+    if (provider === 'sendgrid') {
+      if (!process.env.SENDGRID_API_KEY || process.env.SENDGRID_API_KEY === '') {
+        missing.push('SENDGRID_API_KEY');
+      }
+    } else if (provider === 'resend') {
+      if (!process.env.RESEND_API_KEY || process.env.RESEND_API_KEY === '') {
+        missing.push('RESEND_API_KEY');
+      }
+    } else {
+      for (const varName of ['SMTP_HOST', 'SMTP_USER', 'SMTP_PASS'] as const) {
+        if (!process.env[varName] || process.env[varName] === '') {
+          missing.push(varName);
+        }
       }
     }
   }
@@ -53,4 +59,3 @@ export function validateEnvironment(): void {
     console.warn('[ENV] Running in development mode - some security checks are relaxed');
   }
 }
-

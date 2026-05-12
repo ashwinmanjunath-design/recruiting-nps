@@ -12,11 +12,19 @@ interface SurveyEmailData {
 }
 
 class EmailService {
-  private transporter: nodemailer.Transporter;
+  private transporter: nodemailer.Transporter | null;
+  private emailProvider: 'smtp' | 'sendgrid';
 
   constructor() {
-    this.transporter = this.createTransporter();
-    void this.verifyTransporterConnection();
+    const provider = (process.env.EMAIL_PROVIDER || 'smtp').toLowerCase();
+    this.emailProvider = provider === 'sendgrid' ? 'sendgrid' : 'smtp';
+    this.transporter = this.emailProvider === 'smtp' ? this.createTransporter() : null;
+
+    if (this.emailProvider === 'smtp') {
+      void this.verifyTransporterConnection();
+    } else {
+      console.log('[Email Service] Using SendGrid API provider for email delivery');
+    }
   }
 
   /**
@@ -95,25 +103,23 @@ class EmailService {
     const emailText = this.generateSurveyEmailText(data);
 
     // Validate and sanitize fromEmail
-    const fromEmailValidation = validateEmail(data.fromEmail || '');
-    if (!fromEmailValidation.valid && data.fromEmail) {
+    const defaultFromEmail = process.env.DEFAULT_FROM_EMAIL?.toLowerCase().trim() || '';
+    const requestedFrom = data.fromEmail?.toLowerCase().trim() || defaultFromEmail;
+    const fromEmailValidation = validateEmail(requestedFrom || '');
+    if (!fromEmailValidation.valid) {
       throw new Error(`Invalid fromEmail: ${fromEmailValidation.error}`);
     }
 
     // For Gmail SMTP, the fromEmail should match SMTP_USER to avoid authentication issues
     const smtpUser = process.env.SMTP_USER;
-    let fromEmail = data.fromEmail ? sanitizeEmailHeader(data.fromEmail.toLowerCase().trim()) : null;
-    
-    if (smtpUser && fromEmail && fromEmail !== smtpUser.toLowerCase().trim()) {
+    let fromEmail = sanitizeEmailHeader(requestedFrom);
+
+    if (this.emailProvider === 'smtp' && smtpUser && fromEmail !== smtpUser.toLowerCase().trim()) {
       secureLogger.warn('fromEmail mismatch with SMTP_USER, using SMTP_USER', {
         requestedFrom: fromEmail,
         smtpUser,
       });
       fromEmail = sanitizeEmailHeader(smtpUser.toLowerCase().trim());
-    } else if (!fromEmail && smtpUser) {
-      fromEmail = sanitizeEmailHeader(smtpUser.toLowerCase().trim());
-    } else if (!fromEmail) {
-      throw new Error('fromEmail is required and must be from an allowed domain');
     }
 
     // Sanitize subject to prevent header injection
@@ -130,6 +136,7 @@ class EmailService {
     // Log email details for debugging
     console.log('[Email Service] ⚠️  EMAIL DETAILS - FROM:', mailOptions.from, 'TO:', mailOptions.to);
     console.log('[Email Service] Sending survey email:', {
+      provider: this.emailProvider,
       environment: process.env.NODE_ENV || 'development',
       from: mailOptions.from,
       to: recipient,
@@ -143,14 +150,17 @@ class EmailService {
     console.log('[Email Service] Final from field:', fromEmail);
 
     try {
-      const result = await Promise.race([
-        this.transporter.sendMail(mailOptions),
-        new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error('Email send timeout after 25s')), 25000);
-        }),
-      ]);
+      const result = this.emailProvider === 'sendgrid'
+        ? await this.sendViaSendGrid(mailOptions)
+        : await Promise.race([
+            this.transporter!.sendMail(mailOptions),
+            new Promise<never>((_, reject) => {
+              setTimeout(() => reject(new Error('Email send timeout after 25s')), 25000);
+            }),
+          ]);
       
       console.log('[Email Service] ✅ Email sent successfully:', {
+        provider: this.emailProvider,
         messageId: result.messageId,
         response: result.response,
         accepted: result.accepted,
@@ -186,6 +196,10 @@ class EmailService {
    * Verify transporter on startup to surface connectivity issues early.
    */
   private async verifyTransporterConnection(): Promise<void> {
+    if (!this.transporter) {
+      return;
+    }
+
     try {
       await this.transporter.verify();
       console.log('[Email Service] Transport verification successful');
@@ -195,6 +209,61 @@ class EmailService {
         code: error?.code,
         command: error?.command,
       });
+    }
+  }
+
+  private async sendViaSendGrid(mailOptions: {
+    from: string;
+    to: string;
+    subject: string;
+    html: string;
+    text: string;
+  }): Promise<{ messageId: string; response: string; accepted: string[] }> {
+    const apiKey = process.env.SENDGRID_API_KEY;
+    if (!apiKey) {
+      throw new Error('SENDGRID_API_KEY is not configured');
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+
+    try {
+      const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          personalizations: [{ to: [{ email: mailOptions.to }] }],
+          from: { email: mailOptions.from },
+          subject: mailOptions.subject,
+          content: [
+            { type: 'text/plain', value: mailOptions.text },
+            { type: 'text/html', value: mailOptions.html },
+          ],
+        }),
+        signal: controller.signal,
+      });
+
+      const bodyText = await response.text();
+
+      if (!response.ok) {
+        throw new Error(`SendGrid API error (${response.status}): ${bodyText || response.statusText}`);
+      }
+
+      return {
+        messageId: response.headers.get('x-message-id') || `sendgrid-${Date.now()}`,
+        response: '202 Accepted',
+        accepted: [mailOptions.to],
+      };
+    } catch (error: any) {
+      if (error?.name === 'AbortError') {
+        throw new Error('SendGrid API timeout after 20s');
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
     }
   }
 
