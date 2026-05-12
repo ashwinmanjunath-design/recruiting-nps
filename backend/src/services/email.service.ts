@@ -16,6 +16,7 @@ class EmailService {
 
   constructor() {
     this.transporter = this.createTransporter();
+    void this.verifyTransporterConnection();
   }
 
   /**
@@ -35,6 +36,9 @@ class EmailService {
         host: smtpHost,
         port: Number(process.env.SMTP_PORT || 587),
         secure: process.env.SMTP_PORT === '465', // true for port 465, false otherwise
+        connectionTimeout: 15000,
+        greetingTimeout: 10000,
+        socketTimeout: 20000,
         auth: {
           user: smtpUser,
           pass: smtpPass,
@@ -51,6 +55,9 @@ class EmailService {
         port: parseInt(process.env.MAILHOG_PORT || '1025', 10),
         secure: false,
         ignoreTLS: true,
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 15000,
       });
     } else {
       // Production: Resend SMTP (fallback)
@@ -59,6 +66,9 @@ class EmailService {
         host: 'smtp.resend.com',
         port: 465,
         secure: true,
+        connectionTimeout: 15000,
+        greetingTimeout: 10000,
+        socketTimeout: 20000,
         auth: {
           user: 'resend',
           pass: process.env.RESEND_API_KEY,
@@ -133,7 +143,12 @@ class EmailService {
     console.log('[Email Service] Final from field:', fromEmail);
 
     try {
-      const result = await this.transporter.sendMail(mailOptions);
+      const result = await Promise.race([
+        this.transporter.sendMail(mailOptions),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('Email send timeout after 25s')), 25000);
+        }),
+      ]);
       
       console.log('[Email Service] ✅ Email sent successfully:', {
         messageId: result.messageId,
@@ -164,6 +179,22 @@ class EmailService {
         stack: error.stack,
       });
       throw error;
+    }
+  }
+
+  /**
+   * Verify transporter on startup to surface connectivity issues early.
+   */
+  private async verifyTransporterConnection(): Promise<void> {
+    try {
+      await this.transporter.verify();
+      console.log('[Email Service] Transport verification successful');
+    } catch (error: any) {
+      console.error('[Email Service] Transport verification failed:', {
+        error: error?.message,
+        code: error?.code,
+        command: error?.command,
+      });
     }
   }
 
@@ -353,4 +384,3 @@ Candidate 360° NPS
 }
 
 export default new EmailService();
-
